@@ -14,6 +14,32 @@ public class OdmVisuals : MonoBehaviour
     [Tooltip("用于绘制右侧绳索路径的 LineRenderer。")]
     public LineRenderer rightCableRenderer;
 
+    [Header("绳索发射波浪")]
+    [Tooltip("开启后，绳索飞行途中会用多段波浪线显示，模拟锚头带出绳索的甩动感。只影响视觉，不影响钩锁判定。")]
+    public bool enableShootWave = true;
+
+    [Tooltip("发射波浪线使用的分段数。数值越高越平滑，但 LineRenderer 点数也越多。")]
+    [Range(4, 32)]
+    public int shootWaveSegments = 16;
+
+    [Tooltip("绳索刚发射时的主波浪最大幅度。")]
+    public float shootWaveAmplitude = 0.9f;
+
+    [Tooltip("主波浪在整条绳索上的重复次数。")]
+    public float shootWaveFrequency = 2.2f;
+
+    [Tooltip("波浪沿绳索滚动的速度。")]
+    public float shootWaveSpeed = 16f;
+
+    [Tooltip("绳头飞出多少世界单位后，波浪逐渐衰减为直线。")]
+    public float shootWaveFadeDistance = 20f;
+
+    [Tooltip("叠加在主波浪上的小幅细波，用于模拟 2D 螺旋感。")]
+    public float shootWaveSecondaryAmplitude = 0.25f;
+
+    [Tooltip("细波在整条绳索上的重复次数。")]
+    public float shootWaveSecondaryFrequency = 6f;
+
     [Header("相机")]
     [Tooltip("视野会随玩家速度变化的 Cinemachine 虚拟相机。未指定时会自动查找场景中的虚拟相机。")]
     public CinemachineVirtualCamera virtualCamera;
@@ -61,6 +87,8 @@ public class OdmVisuals : MonoBehaviour
     private Vector3 baseTrackedObjectOffset;
     private Vector2 currentLookAheadOffset;
     private Vector2 lookAheadVelocity;
+    private Vector3[] leftShootWavePoints;
+    private Vector3[] rightShootWavePoints;
 
     /// <summary>
     /// 缓存引用，并在未指定相机时使用主相机。
@@ -80,8 +108,8 @@ public class OdmVisuals : MonoBehaviour
     /// </summary>
     void Update()
     {
-        DrawCable(leftCableRenderer, controller.GetCablePath(true));
-        DrawCable(rightCableRenderer, controller.GetCablePath(false));
+        DrawCable(leftCableRenderer, controller.GetCablePath(true), true);
+        DrawCable(rightCableRenderer, controller.GetCablePath(false), false);
         UpdateCameraSize();
         UpdateMouseLookAhead();
         UpdateSpeedLines();
@@ -92,15 +120,90 @@ public class OdmVisuals : MonoBehaviour
     /// </summary>
     /// <param name="line">需要更新的 LineRenderer。</param>
     /// <param name="path">世界坐标下的绳索路径。为 null 时隐藏渲染器。</param>
-    private void DrawCable(LineRenderer line, Vector3[] path)
+    /// <param name="isLeft">是否为左侧绳索。</param>
+    private void DrawCable(LineRenderer line, Vector3[] path, bool isLeft)
     {
         if (line == null) return;
 
         line.enabled = path != null && path.Length >= 2;
         if (!line.enabled) return;
 
+        if (ShouldDrawShootWave(isLeft, path))
+        {
+            Vector3[] wavePath = BuildShootWavePath(path[0], path[path.Length - 1], isLeft);
+            line.positionCount = wavePath.Length;
+            line.SetPositions(wavePath);
+            return;
+        }
+
         line.positionCount = path.Length;
         line.SetPositions(path);
+    }
+
+    /// <summary>
+    /// 判断当前绳索是否处于需要波浪显示的飞行阶段。
+    /// </summary>
+    private bool ShouldDrawShootWave(bool isLeft, Vector3[] path)
+    {
+        if (!enableShootWave || controller == null || path == null || path.Length < 2)
+            return false;
+
+        return isLeft ? controller.IsLeftFlying : controller.IsRightFlying;
+    }
+
+    /// <summary>
+    /// 根据起点和绳头位置生成 2D 波浪路径，表现绳索刚发射时的甩动和螺旋感。
+    /// </summary>
+    private Vector3[] BuildShootWavePath(Vector3 start, Vector3 tip, bool isLeft)
+    {
+        int pointCount = Mathf.Max(2, shootWaveSegments + 1);
+        Vector3[] points = GetShootWaveBuffer(isLeft, pointCount);
+
+        Vector2 start2D = start;
+        Vector2 tip2D = tip;
+        Vector2 direction = tip2D - start2D;
+        float distance = direction.magnitude;
+
+        if (distance < 0.001f)
+        {
+            points[0] = start;
+            points[pointCount - 1] = tip;
+            return points;
+        }
+
+        Vector2 dir = direction / distance;
+        Vector2 normal = new Vector2(-dir.y, dir.x);
+        float fadeDistance = Mathf.Max(0.001f, shootWaveFadeDistance);
+        float fade = 1f - Mathf.Clamp01(distance / fadeDistance);
+        float timePhase = Time.time * shootWaveSpeed;
+
+        for (int i = 0; i < pointCount; i++)
+        {
+            float t = i / (float)(pointCount - 1);
+            Vector2 straightPoint = Vector2.Lerp(start2D, tip2D, t);
+            float envelope = Mathf.Sin(t * Mathf.PI);
+            float mainWave = Mathf.Sin(t * Mathf.PI * 2f * shootWaveFrequency + timePhase) * shootWaveAmplitude;
+            float detailWave = Mathf.Sin(t * Mathf.PI * 2f * shootWaveSecondaryFrequency - timePhase * 1.35f) * shootWaveSecondaryAmplitude;
+            Vector2 wavePoint = straightPoint + normal * ((mainWave + detailWave) * envelope * fade);
+
+            points[i] = new Vector3(wavePoint.x, wavePoint.y, Mathf.Lerp(start.z, tip.z, t));
+        }
+
+        points[0] = start;
+        points[pointCount - 1] = tip;
+        return points;
+    }
+
+    private Vector3[] GetShootWaveBuffer(bool isLeft, int pointCount)
+    {
+        Vector3[] buffer = isLeft ? leftShootWavePoints : rightShootWavePoints;
+        if (buffer == null || buffer.Length != pointCount)
+            buffer = new Vector3[pointCount];
+
+        if (isLeft) leftShootWavePoints = buffer;
+        else rightShootWavePoints = buffer;
+
+        return buffer;
     }
 
     /// <summary>
