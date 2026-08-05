@@ -25,24 +25,34 @@ public class OdmInput : MonoBehaviour
     void Update()
     {
         if (mainCamera == null)
-        {
             mainCamera = Camera.main;
-            if (mainCamera == null) return;
+
+        bool hasCamera = mainCamera != null;
+        Vector2 mouseWorld = transform.position;
+        Vector2 aimDirection = Vector2.right;
+
+        if (hasCamera)
+        {
+            mouseWorld = mainCamera.ScreenToWorldPoint(Input.mousePosition);
+            aimDirection = (mouseWorld - (Vector2)transform.position).normalized;
         }
 
-        Vector2 mouseWorld = mainCamera.ScreenToWorldPoint(Input.mousePosition);
-        Vector2 aimDirection = (mouseWorld - (Vector2)transform.position).normalized;
+        if (hasCamera)
+        {
+            if (Input.GetMouseButtonDown(0)) controller.ShootCable(aimDirection, true);
+            if (Input.GetMouseButton(0)) controller.UpdateCableTarget(mouseWorld, true);
+            if (Input.GetMouseButtonUp(0)) controller.ReleaseCable(true);
 
-        if (Input.GetMouseButtonDown(0)) controller.ShootCable(aimDirection, true);
-        if (Input.GetMouseButton(0)) controller.UpdateCableTarget(mouseWorld, true);
-        if (Input.GetMouseButtonUp(0)) controller.ReleaseCable(true);
-
-        if (Input.GetMouseButtonDown(1)) controller.ShootCable(aimDirection, false);
-        if (Input.GetMouseButton(1)) controller.UpdateCableTarget(mouseWorld, false);
-        if (Input.GetMouseButtonUp(1)) controller.ReleaseCable(false);
+            if (Input.GetMouseButtonDown(1)) controller.ShootCable(aimDirection, false);
+            if (Input.GetMouseButton(1)) controller.UpdateCableTarget(mouseWorld, false);
+            if (Input.GetMouseButtonUp(1)) controller.ReleaseCable(false);
+        }
 
         if (Input.GetKeyDown(KeyCode.Space))
             controller.TryJump();
+
+        if (Input.GetKeyUp(KeyCode.Space))
+            controller.ReleaseJump();
 
         if (Input.GetKeyDown(KeyCode.Q))
         {
@@ -60,10 +70,7 @@ public class OdmInput : MonoBehaviour
 
         controller.IsPullKeyHeld = Input.GetKey(KeyCode.Q) && !suppressPullUntilQReleased;
 
-        if (Input.GetKeyDown(KeyCode.W))
-            controller.ToggleHoverByInput();
-
-        if (Input.GetKeyDown(KeyCode.E))
+        if (hasCamera && Input.GetKeyDown(KeyCode.E))
             controller.TryExecuteEnemy(mouseWorld);
 
         if (Input.GetKeyDown(KeyCode.C))

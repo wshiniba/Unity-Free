@@ -4,17 +4,9 @@ using UnityEngine;
 
 public enum OdmState
 {
-    Grounded,
+    Daily,
 
-    Airborne,
-
-    Shooting,
-
-    Pulling,
-
-    Swinging,
-
-    Hovering
+    RopeMobility
 }
 
 [RequireComponent(typeof(Rigidbody2D))]
@@ -22,6 +14,10 @@ public enum OdmState
 [RequireComponent(typeof(OdmGasSystem))]
 public class OdmController : MonoBehaviour
 {
+    private const float JumpGroundIgnoreDuration = 0.08f;
+    private const float JumpGroundedUpwardSpeedThreshold = 0.1f;
+    private const float MoveInputDeadZone = 0.01f;
+
     private struct RopeBend
     {
         public Vector2 position;
@@ -57,7 +53,7 @@ public class OdmController : MonoBehaviour
 
     [Header("状态")]
     [Tooltip("当前 ODM 运行状态，仅用于调试观察，不建议手动修改。")]
-    public OdmState currentState = OdmState.Grounded;
+    public OdmState currentState = OdmState.Daily;
 
     private struct TentacleHitRecord
     {
@@ -224,14 +220,6 @@ public class OdmController : MonoBehaviour
     [Tooltip("松开鼠标投掷敌人时的最高速度。用于避免鼠标瞬间抖动把敌人甩出过快。小于等于 0 时不限制。")]
     public float enemyThrowMaxSpeed = 32f;
 
-    [Tooltip("投掷敌人时混入敌人自身当前速度的比例。适当提高可以让投掷更贴近敌人实际运动惯性。")]
-    [Range(0f, 1f)]
-    public float enemyThrowCurrentVelocityInfluence = 0.35f;
-
-    [Tooltip("甩出敌人时继承玩家当前速度的比例。0 表示完全不继承，1 表示完整叠加玩家速度。")]
-    [Range(0f, 1f)]
-    public float enemyThrowPlayerVelocityInheritance = 0.35f;
-
     [Header("触手抓取场景物品")]
     [Tooltip("开启后，触手扫到 TentacleInteractableObject 时可按 Q 连接并抓取场景物品。")]
     public bool allowObjectGrab = true;
@@ -259,14 +247,6 @@ public class OdmController : MonoBehaviour
 
     [Tooltip("松开鼠标投掷场景物品时的最高速度。小于等于 0 时不限制。")]
     public float objectThrowMaxSpeed = 32f;
-
-    [Tooltip("投掷场景物品时混入物品自身当前速度的比例。适当提高可以让投掷更贴近物体实际运动惯性。")]
-    [Range(0f, 1f)]
-    public float objectThrowCurrentVelocityInfluence = 0.35f;
-
-    [Tooltip("甩出场景物品时继承玩家当前速度的比例。0 表示完全不继承，1 表示完整叠加玩家速度。")]
-    [Range(0f, 1f)]
-    public float objectThrowPlayerVelocityInheritance = 0.35f;
 
     [Header("触手处决")]
     [Tooltip("按 E 查找可被单触手穿刺处决的敌人时使用的层级。")]
@@ -314,25 +294,30 @@ public class OdmController : MonoBehaviour
     [Tooltip("玩家站在地面上时，由 A/D 或 Horizontal 输入控制的水平移动速度。")]
     public float groundMoveSpeed = 8f;
 
-    [Tooltip("地面左右移动追接目标速度的加速度，数值越大响应越快。")]
-    public float groundAcceleration = 60f;
-
     [Header("跳跃")]
     [Tooltip("按下跳跃键时写入 Rigidbody2D 的向上速度。数值越大，起跳越高。")]
-    public float jumpSpeed = 18f;
+    public float jumpSpeed = 25f;
+
+    [Tooltip("完整跳跃需要按住跳跃键的时间。按住期间会持续保持 jumpSpeed；提前松开会直接把 Y 速度归 0 并开始下落。")]
+    [Range(0f, 0.3f)]
+    public float fullJumpHoldTime = 0.16f;
 
     [Tooltip("土狼时间。角色刚离开地面后的这段时间内，仍然允许按跳跃键起跳，用于减少从平台边缘落下时跳跃失误。")]
     public float coyoteTime = 0.1f;
 
-    [Tooltip("摆荡时由 A/D 或 Horizontal 输入施加的水平力。")]
-    public float swingForce = 10f;
+    [Tooltip("跳跃预输入缓存时间。角色落地前提前按下跳跃键，只要在这段时间内落地，就会自动起跳。")]
+    [Range(0f, 0.3f)]
+    public float jumpBufferTime = 0.12f;
+
+    [Tooltip("绳索机动状态下 A/D 提供的水平微调速度。该值应明显低于 groundMoveSpeed，只用于细微调整位置。")]
+    public float ropeMobilityHorizontalSpeed = 2f;
 
     [Tooltip("按住 Q 时，朝当前绳索锚点施加给玩家的牵引力。")]
     public float pullForce = 20f;
 
     [Header("发射移动")]
     [Tooltip("开启后，绳索飞行但还没有连接到目标时，角色在地面上仍然可以继续用 A/D 移动。")]
-    public bool allowGroundMoveWhileShooting = true;
+    public bool allowGroundMoveWhileCableFlying = true;
 
 
     [Tooltip("玩家按 Space 冲刺时施加的瞬时冲量。")]
@@ -356,59 +341,27 @@ public class OdmController : MonoBehaviour
     [Tooltip("启用后，根据 ODM 状态动态切换重力和线性阻尼。关闭后回到 Rigidbody2D 面板或刚体参数中的固定重力/阻尼。")]
     public bool enableStatePhysics = true;
 
-    [Tooltip("站在地面时的重力倍率。")]
-    public float groundedGravityScale = 2f;
+    [Tooltip("日常状态下，角色站在地面时的重力倍率。")]
+    public float dailyGroundGravityScale = 2f;
 
-    [Tooltip("普通空中状态的重力倍率。数值越高，下坠越有重量。")]
-    public float airborneGravityScale = 2.8f;
+    [Tooltip("日常状态下，角色不在地面时的重力倍率。数值越高，下坠越有重量。")]
+    public float dailyAirGravityScale = 12f;
 
-    [Tooltip("持续牵引状态的重力倍率。数值越低，拉绳时越不容易被下坠拖住。")]
-    public float pullingGravityScale = 1.2f;
+    [Tooltip("绳索机动状态的重力倍率。数值越低，拉绳后的空中机动越不容易被下坠拖住。")]
+    public float ropeMobilityGravityScale = 2f;
 
-    [Tooltip("摆荡状态的重力倍率。用于保留弧线感，同时避免过重。")]
-    public float swingingGravityScale = 1.5f;
+    [Tooltip("日常状态下，角色站在地面时的线性阻尼。")]
+    public float dailyGroundDamping = 0f;
 
-    [Tooltip("悬停状态的重力倍率。默认保持 0，延续原先 Hover 由切线重力单独处理的行为。")]
-    public float hoveringGravityScale = 0f;
+    [Tooltip("日常状态下，角色不在地面时的线性阻尼。数值越低，空中惯性保留越强。")]
+    public float dailyAirDamping = 0f;
 
-    [Tooltip("站在地面时的线性阻尼。")]
-    public float groundedDamping = 0.5f;
-
-    [Tooltip("普通空中状态的线性阻尼。数值越低，空中惯性保留越强。")]
-    public float airborneDamping = 0.05f;
-
-    [Tooltip("持续牵引状态的线性阻尼。")]
-    public float pullingDamping = 0f;
-
-    [Tooltip("摆荡状态的线性阻尼。")]
-    public float swingingDamping = 0.02f;
-
-    [Tooltip("悬停状态的线性阻尼。")]
-    public float hoveringDamping = 0.1f;
-
-    [Tooltip("重力倍率切换速度。数值越大，状态切换时重力变化越快。")]
-    public float gravityChangeSpeed = 20f;
-
-    [Tooltip("线性阻尼切换速度。数值越大，状态切换时阻尼变化越快。")]
-    public float dampingChangeSpeed = 40f;
+    [Tooltip("绳索机动状态的线性阻尼。")]
+    public float ropeMobilityDamping = 0.1f;
 
     [Header("下落控制")]
-    [Tooltip("是否限制最大下落速度。")]
+    [Tooltip("是否限制最大下落速度。开启后最大下落速度会自动等于 jumpSpeed。")]
     public bool limitFallSpeed = true;
-
-    [Tooltip("最大下落速度。允许重力更有重量，但避免无限加速下坠导致失控。")]
-    public float maxFallSpeed = 28f;
-
-    [Tooltip("是否在高速移动时降低重力影响。")]
-    public bool reduceGravityAtHighSpeed = true;
-
-    [Tooltip("高速时最低重力倍率。0.55 表示高速时最终重力最低降到当前状态重力的 55%。")]
-    [Range(0f, 1f)]
-    public float highSpeedGravityMinMultiplier = 0.55f;
-
-    [Tooltip("用于计算高速弱重力的参考速度。小于等于 0 时使用 maxSpeed。")]
-    public float highSpeedGravityReference = 30f;
-
 
     [Header("速度限制")]
     [Tooltip("所有 ODM 移动结算后的 Rigidbody2D 最大线速度。")]
@@ -461,8 +414,6 @@ public class OdmController : MonoBehaviour
 
     public bool IsPullKeyHeld { get; set; }
 
-    public bool IsHovering { get; private set; }
-
     public bool IsGrounded { get; private set; }
 
     public Vector2 LeftAnchorPos { get; private set; }
@@ -497,11 +448,14 @@ public class OdmController : MonoBehaviour
 
     private float horizontalInput;
     private float lastGroundedTime = float.NegativeInfinity;
-    private bool jumpConsumedSinceGrounded;
+    private float lastJumpPressedTime = float.NegativeInfinity;
+    private float ignoreGroundedUntil = float.NegativeInfinity;
+    private float jumpHoldTimer;
+    private bool jumpUsedSinceLastGrounded;
+    private bool jumpSustainActive;
+    private bool jumpInputHeld;
+    private bool ropeMobilityActive;
 
-
-    private float leftHoverRopeLength;
-    private float rightHoverRopeLength;
 
     private float defaultGravityScale;
     private float nextCableDamageTime;
@@ -584,22 +538,28 @@ public class OdmController : MonoBehaviour
     private void OnValidate()
     {
         coyoteTime = Mathf.Max(0f, coyoteTime);
+        fullJumpHoldTime = Mathf.Clamp(fullJumpHoldTime, 0f, 0.3f);
+        jumpBufferTime = Mathf.Clamp(jumpBufferTime, 0f, 0.3f);
+        dailyGroundGravityScale = Mathf.Max(0f, dailyGroundGravityScale);
+        dailyAirGravityScale = Mathf.Max(0f, dailyAirGravityScale);
+        ropeMobilityGravityScale = Mathf.Max(0f, ropeMobilityGravityScale);
+        dailyGroundDamping = Mathf.Max(0f, dailyGroundDamping);
+        dailyAirDamping = Mathf.Max(0f, dailyAirDamping);
+        ropeMobilityDamping = Mathf.Max(0f, ropeMobilityDamping);
         playerDamageKnockbackControlLock = Mathf.Max(0f, playerDamageKnockbackControlLock);
         throwAimDirectionMinSpeed = Mathf.Max(0f, throwAimDirectionMinSpeed);
+        groundMoveSpeed = Mathf.Max(0f, groundMoveSpeed);
+        ropeMobilityHorizontalSpeed = Mathf.Max(0f, ropeMobilityHorizontalSpeed);
 
         enemyThrowVelocityScale = Mathf.Max(0f, enemyThrowVelocityScale);
         enemyThrowVelocitySmoothing = Mathf.Max(0f, enemyThrowVelocitySmoothing);
         enemyThrowMinSpeed = Mathf.Max(0f, enemyThrowMinSpeed);
         enemyThrowMaxSpeed = Mathf.Max(0f, enemyThrowMaxSpeed);
-        enemyThrowPlayerVelocityInheritance = Mathf.Clamp01(enemyThrowPlayerVelocityInheritance);
-        enemyThrowCurrentVelocityInfluence = Mathf.Clamp01(enemyThrowCurrentVelocityInfluence);
 
         objectThrowVelocityScale = Mathf.Max(0f, objectThrowVelocityScale);
         objectThrowVelocitySmoothing = Mathf.Max(0f, objectThrowVelocitySmoothing);
         objectThrowMinSpeed = Mathf.Max(0f, objectThrowMinSpeed);
         objectThrowMaxSpeed = Mathf.Max(0f, objectThrowMaxSpeed);
-        objectThrowPlayerVelocityInheritance = Mathf.Clamp01(objectThrowPlayerVelocityInheritance);
-        objectThrowCurrentVelocityInfluence = Mathf.Clamp01(objectThrowCurrentVelocityInfluence);
     }
 
     void Awake()
@@ -682,11 +642,16 @@ public class OdmController : MonoBehaviour
     void FixedUpdate()
     {
         IsGrounded = CheckGrounded();
-        UpdateCoyoteTimeState();
+        if (ShouldIgnoreGroundedAfterJump())
+            IsGrounded = false;
+
+        UpdateJumpAvailability();
+        TryConsumeBufferedJump();
         UpdateEnemyAnchorPositions();
         UpdateMovementState();
         UpdateStatePhysics();
         UpdateCableBends();
+        UpdateHollowKnightJump();
         ApplyMovement();
         ApplyEnemyGrabControl();
         ApplyRopeLimits();
@@ -700,8 +665,8 @@ public class OdmController : MonoBehaviour
 
     public void SetHorizontalInput(float input)
     {
-        horizontalInput = input;
-        UpdateFacingDirection(input);
+        horizontalInput = Mathf.Clamp(input, -1f, 1f);
+        UpdateFacingDirection(horizontalInput);
     }
 
     /// <summary>
@@ -709,33 +674,106 @@ public class OdmController : MonoBehaviour
     /// </summary>
     public bool TryJump()
     {
-        bool groundedNow = IsGrounded || CheckGrounded();
-        bool canUseCoyoteTime = !jumpConsumedSinceGrounded && Time.time - lastGroundedTime <= coyoteTime;
-        if (!groundedNow && !canUseCoyoteTime)
+        jumpInputHeld = true;
+        lastJumpPressedTime = Time.time;
+        return TryConsumeBufferedJump();
+    }
+
+    private bool TryConsumeBufferedJump()
+    {
+        if (!HasBufferedJump() || !CanStartJump())
             return false;
 
-        SetHovering(false);
-
-        Vector2 velocity = Rb.linearVelocity;
-        velocity.y = Mathf.Max(velocity.y, jumpSpeed);
-        Rb.linearVelocity = velocity;
-
-        currentState = OdmState.Airborne;
-        IsGrounded = false;
-        jumpConsumedSinceGrounded = true;
-        lastGroundedTime = float.NegativeInfinity;
+        PerformJump();
+        lastJumpPressedTime = float.NegativeInfinity;
         return true;
     }
 
-    private void UpdateCoyoteTimeState()
+    private bool HasBufferedJump()
+    {
+        return Time.time - lastJumpPressedTime <= jumpBufferTime;
+    }
+
+    private bool CanStartJump()
+    {
+        bool groundedNow = IsGrounded || CheckGrounded();
+        bool canUseCoyoteTime = !jumpUsedSinceLastGrounded && Time.time - lastGroundedTime <= coyoteTime;
+        return groundedNow || canUseCoyoteTime;
+    }
+
+    private void PerformJump()
+    {
+        Vector2 velocity = Rb.linearVelocity;
+        velocity.y = jumpSpeed;
+        Rb.linearVelocity = velocity;
+
+        ropeMobilityActive = false;
+        currentState = OdmState.Daily;
+        IsGrounded = false;
+        jumpUsedSinceLastGrounded = true;
+        jumpSustainActive = jumpInputHeld && fullJumpHoldTime > 0f;
+        jumpHoldTimer = 0f;
+        ignoreGroundedUntil = Time.time + JumpGroundIgnoreDuration;
+        lastGroundedTime = float.NegativeInfinity;
+    }
+
+    public void ReleaseJump()
+    {
+        jumpInputHeld = false;
+
+        if (Rb == null || !jumpSustainActive)
+            return;
+
+        Vector2 velocity = Rb.linearVelocity;
+        if (velocity.y > 0f)
+        {
+            velocity.y = 0f;
+            Rb.linearVelocity = velocity;
+        }
+
+        jumpSustainActive = false;
+        currentState = OdmState.Daily;
+    }
+
+    private bool ShouldIgnoreGroundedAfterJump()
+    {
+        if (Rb == null || Time.time > ignoreGroundedUntil)
+            return false;
+
+        return jumpUsedSinceLastGrounded && Rb.linearVelocity.y > JumpGroundedUpwardSpeedThreshold;
+    }
+
+    private void UpdateJumpAvailability()
     {
         if (!IsGrounded)
             return;
 
         lastGroundedTime = Time.time;
+        jumpUsedSinceLastGrounded = false;
+        jumpSustainActive = false;
+        jumpHoldTimer = 0f;
+        ignoreGroundedUntil = float.NegativeInfinity;
+    }
 
-        if (Rb == null || Rb.linearVelocity.y <= 0.1f)
-            jumpConsumedSinceGrounded = false;
+    private void UpdateHollowKnightJump()
+    {
+        if (!jumpSustainActive || Rb == null)
+            return;
+
+        if (IsGrounded || currentState == OdmState.RopeMobility || Rb.linearVelocity.y <= 0f)
+        {
+            jumpSustainActive = false;
+            return;
+        }
+
+        jumpHoldTimer += Time.fixedDeltaTime;
+        if (jumpHoldTimer >= fullJumpHoldTime)
+        {
+            jumpSustainActive = false;
+            return;
+        }
+
+        Rb.linearVelocity = new Vector2(Rb.linearVelocity.x, jumpSpeed);
     }
 
     private void UpdateFacingDirection(float input)
@@ -797,11 +835,6 @@ public class OdmController : MonoBehaviour
     public void EndPullKey()
     {
         IsPullKeyHeld = false;
-    }
-
-    public void ToggleHoverByInput()
-    {
-        ToggleHovering();
     }
 
     private void OnCollisionEnter2D(Collision2D collision)
@@ -1215,7 +1248,7 @@ public class OdmController : MonoBehaviour
             rightTentacleHitRecords.Clear();
         }
 
-        currentState = OdmState.Shooting;
+        currentState = ResolveCurrentState();
     }
 
     public void UpdateCableTarget(Vector2 worldTarget, bool isLeft)
@@ -1414,7 +1447,7 @@ public class OdmController : MonoBehaviour
         rightFlyRetracting = false;
         leftBends.Clear();
         rightBends.Clear();
-        currentState = IsGrounded ? OdmState.Grounded : OdmState.Airborne;
+        currentState = ResolveCurrentState();
     }
 
     private void StartPierceExecution(Enemy enemy)
@@ -1659,11 +1692,8 @@ public class OdmController : MonoBehaviour
 
         if (TryThrowGrabbedObject(isLeft) || TryThrowGrabbedEnemy(isLeft))
         {
-            if (!HasAnchoredCable())
-                SetHovering(false);
-
             if (!HasActiveCable())
-                currentState = IsGrounded ? OdmState.Grounded : OdmState.Airborne;
+                currentState = ResolveCurrentState();
 
             return;
         }
@@ -1679,20 +1709,13 @@ public class OdmController : MonoBehaviour
             else ClearRightCable();
         }
 
-        if (!HasAnchoredCable())
-        {
-            SetHovering(false);
-        }
-
         if (!HasActiveCable())
-            currentState = IsGrounded ? OdmState.Grounded : OdmState.Airborne;
+            currentState = ResolveCurrentState();
     }
 
     public void AirDash(Vector2 direction)
     {
         if (gasSystem.IsGasEmpty || direction.sqrMagnitude < 0.001f) return;
-
-        SetHovering(false);
 
         Rb.linearVelocity += direction.normalized * airDashForce;
         gasSystem.ConsumeGas(10f);
@@ -1704,46 +1727,44 @@ public class OdmController : MonoBehaviour
     }
 
     /// <summary>
-    /// 传送、重生等强制重置位置时调用。会清除左右触手和悬停状态，但不会触发投掷逻辑。
+    /// 传送、重生等强制重置位置时调用。会清除左右触手，但不会触发投掷逻辑。
     /// </summary>
     public void ResetCablesForTeleport()
     {
         ClearLeftCable();
         ClearRightCable();
-        SetHovering(false);
         IsPullKeyHeld = false;
-        currentState = IsGrounded ? OdmState.Grounded : OdmState.Airborne;
+        ropeMobilityActive = false;
+        jumpSustainActive = false;
+        jumpHoldTimer = 0f;
+        ignoreGroundedUntil = float.NegativeInfinity;
+        currentState = OdmState.Daily;
     }
 
     private void UpdateMovementState()
     {
-        if (ShouldPullCable())
+        bool pullingNow = ShouldPullCable();
+        if (pullingNow)
         {
-            SetHovering(false);
-            currentState = OdmState.Pulling;
+            ropeMobilityActive = true;
+            currentState = OdmState.RopeMobility;
             return;
         }
 
         if (IsGrounded)
         {
-            currentState = HasFlyingCable() ? OdmState.Shooting : OdmState.Grounded;
+            ropeMobilityActive = false;
+            currentState = OdmState.Daily;
             return;
         }
 
-        if (HasFlyingCable())
+        if (ropeMobilityActive)
         {
-            currentState = OdmState.Shooting;
+            currentState = OdmState.RopeMobility;
             return;
         }
 
-        if (!HasAnchoredCable())
-        {
-            SetHovering(false);
-            currentState = OdmState.Airborne;
-            return;
-        }
-
-        currentState = IsHovering ? OdmState.Hovering : OdmState.Swinging;
+        currentState = OdmState.Daily;
     }
 
     private void ApplyMovement()
@@ -1751,48 +1772,84 @@ public class OdmController : MonoBehaviour
         if (Time.time < damageKnockbackControlLockUntil)
             return;
 
-        if (currentState == OdmState.Pulling)
+        switch (currentState)
+        {
+            case OdmState.RopeMobility:
+                ApplyRopeMobilityMovement();
+                return;
+            case OdmState.Daily:
+            default:
+                ApplyDailyMovement();
+                return;
+        }
+    }
+
+    private void ApplyDailyMovement()
+    {
+        if (IsGrounded && HasFlyingCable() && !allowGroundMoveWhileCableFlying)
+        {
+            if (Mathf.Abs(horizontalInput) <= MoveInputDeadZone)
+                ClearHorizontalVelocity();
+            return;
+        }
+
+        ApplyDirectHorizontalMovement(groundMoveSpeed);
+    }
+
+    private void ApplyDirectHorizontalMovement(float horizontalSpeed)
+    {
+        if (Mathf.Abs(horizontalInput) <= MoveInputDeadZone)
+        {
+            ClearHorizontalVelocity();
+            return;
+        }
+
+        float targetX = Mathf.Clamp(horizontalInput, -1f, 1f) * Mathf.Max(0f, horizontalSpeed);
+        Rb.linearVelocity = new Vector2(targetX, Rb.linearVelocity.y);
+    }
+
+    private void ClearHorizontalVelocity()
+    {
+        Rb.linearVelocity = new Vector2(0f, Rb.linearVelocity.y);
+    }
+
+    private void ApplyRopeMobilityMovement()
+    {
+        if (ShouldPullCable())
         {
             PullTowardCable(true);
             PullTowardCable(false);
             gasSystem.HandleContinuousConsumption(Time.fixedDeltaTime);
-
-            if (IsGrounded)
-                ApplyGroundMovement();
-
-            return;
         }
 
-        if (currentState == OdmState.Shooting)
-        {
-            if (IsGrounded && allowGroundMoveWhileShooting)
-                ApplyGroundMovement();
+        ApplyRopeMobilityHorizontalMovement();
 
-            return;
-        }
-
-        if (currentState == OdmState.Grounded)
-        {
-            ApplyGroundMovement();
-            return;
-        }
-
-        if ((currentState == OdmState.Swinging || currentState == OdmState.Hovering) && Mathf.Abs(horizontalInput) > 0.1f)
-            Rb.AddForce(Vector2.right * horizontalInput * swingForce, ForceMode2D.Force);
-
-        if (currentState == OdmState.Hovering)
-            ApplyHoverTangentGravity();
     }
 
-    private void ApplyGroundMovement()
+    private void ApplyRopeMobilityHorizontalMovement()
     {
-        float targetX = horizontalInput * groundMoveSpeed;
-
-        if (Mathf.Abs(Rb.linearVelocity.x) > groundMoveSpeed && Mathf.Sign(Rb.linearVelocity.x) == Mathf.Sign(targetX))
+        if (Mathf.Abs(horizontalInput) <= MoveInputDeadZone || ropeMobilityHorizontalSpeed <= 0f)
             return;
 
-        float nextX = Mathf.MoveTowards(Rb.linearVelocity.x, targetX, groundAcceleration * Time.fixedDeltaTime);
-        Rb.linearVelocity = new Vector2(nextX, Rb.linearVelocity.y);
+        float targetX = Mathf.Clamp(horizontalInput, -1f, 1f) * ropeMobilityHorizontalSpeed;
+        Vector2 velocity = Rb.linearVelocity;
+
+        if (Mathf.Sign(velocity.x) == Mathf.Sign(targetX) && Mathf.Abs(velocity.x) >= Mathf.Abs(targetX))
+            return;
+
+        velocity.x = Mathf.MoveTowards(velocity.x, targetX, ropeMobilityHorizontalSpeed * Time.fixedDeltaTime);
+        Rb.linearVelocity = velocity;
+    }
+
+    private OdmState ResolveCurrentState()
+    {
+        if (IsGrounded)
+            return OdmState.Daily;
+
+        if (ropeMobilityActive)
+            return OdmState.RopeMobility;
+
+        return OdmState.Daily;
     }
 
     private void PullTowardCable(bool isLeft)
@@ -1850,11 +1907,8 @@ public class OdmController : MonoBehaviour
 
         Vector2 throwVelocity = BuildThrowVelocity(
             GetEnemyGrabVelocity(isLeft),
-            enemyRb.linearVelocity,
             GetThrowFallbackDirection(isLeft, enemyRb.position),
             enemyThrowVelocityScale,
-            enemyThrowCurrentVelocityInfluence,
-            enemyThrowPlayerVelocityInheritance,
             enemyThrowMinSpeed,
             enemyThrowMaxSpeed);
         if (throwVelocity.sqrMagnitude <= 0.000001f)
@@ -1975,11 +2029,8 @@ public class OdmController : MonoBehaviour
 
         Vector2 throwVelocity = BuildThrowVelocity(
             GetEnemyGrabVelocity(isLeft),
-            objectRb.linearVelocity,
             GetThrowFallbackDirection(isLeft, objectRb.position),
             objectThrowVelocityScale,
-            objectThrowCurrentVelocityInfluence,
-            objectThrowPlayerVelocityInheritance,
             objectThrowMinSpeed,
             objectThrowMaxSpeed);
         if (throwVelocity.sqrMagnitude <= 0.000001f)
@@ -2234,7 +2285,7 @@ public class OdmController : MonoBehaviour
             rightRopeLength = ropeLength;
         }
 
-        currentState = IsGrounded ? OdmState.Grounded : OdmState.Swinging;
+        currentState = ResolveCurrentState();
     }
 
     private void AnchorCableToEnemy(bool isLeft, Transform target, Vector2 localPoint)
@@ -2276,7 +2327,7 @@ public class OdmController : MonoBehaviour
             rightTouchedEnemyTarget = null;
         }
 
-        currentState = IsGrounded ? OdmState.Grounded : OdmState.Swinging;
+        currentState = ResolveCurrentState();
     }
 
     private void AnchorCableToObject(bool isLeft, Transform target, Vector2 localPoint)
@@ -2318,7 +2369,7 @@ public class OdmController : MonoBehaviour
             rightTouchedObjectTarget = null;
         }
 
-        currentState = IsGrounded ? OdmState.Grounded : OdmState.Swinging;
+        currentState = ResolveCurrentState();
     }
 
     private void UpdateEnemyAnchorPositions()
@@ -2473,21 +2524,15 @@ public class OdmController : MonoBehaviour
 
     private Vector2 BuildThrowVelocity(
         Vector2 grabVelocity,
-        Vector2 grabbedBodyVelocity,
         Vector2 fallbackDirection,
         float grabVelocityScale,
-        float grabbedBodyVelocityInfluence,
-        float playerVelocityInheritance,
         float minSpeed,
         float maxSpeed)
     {
         Vector2 grabComponent = grabVelocity * Mathf.Max(0f, grabVelocityScale);
         Vector2 velocity = grabComponent;
-        velocity += grabbedBodyVelocity * Mathf.Clamp01(grabbedBodyVelocityInfluence);
-        if (Rb != null)
-            velocity += Rb.linearVelocity * Mathf.Clamp01(playerVelocityInheritance);
 
-        Vector2 direction = GetStableThrowDirection(grabComponent, velocity, grabbedBodyVelocity, fallbackDirection);
+        Vector2 direction = GetStableThrowDirection(grabComponent, fallbackDirection);
         if (direction.sqrMagnitude <= 0.000001f)
             return Vector2.zero;
 
@@ -2501,19 +2546,11 @@ public class OdmController : MonoBehaviour
 
     private Vector2 GetStableThrowDirection(
         Vector2 grabComponent,
-        Vector2 combinedVelocity,
-        Vector2 grabbedBodyVelocity,
         Vector2 fallbackDirection)
     {
         float aimMinSpeed = Mathf.Max(0f, throwAimDirectionMinSpeed);
         if (grabComponent.sqrMagnitude >= aimMinSpeed * aimMinSpeed)
             return grabComponent.normalized;
-
-        if (combinedVelocity.sqrMagnitude > 0.000001f)
-            return combinedVelocity.normalized;
-
-        if (grabbedBodyVelocity.sqrMagnitude > 0.000001f)
-            return grabbedBodyVelocity.normalized;
 
         if (fallbackDirection.sqrMagnitude > 0.000001f)
             return fallbackDirection.normalized;
@@ -2577,9 +2614,6 @@ public class OdmController : MonoBehaviour
     {
         LimitRope(true);
         LimitRope(false);
-
-        if (IsHovering)
-            ApplyHoverRopeLocks();
     }
 
     private bool ShouldPullCable()
@@ -2606,127 +2640,20 @@ public class OdmController : MonoBehaviour
         return true;
     }
 
-    private void ToggleHovering()
-    {
-        if (IsHovering)
-        {
-            SetHovering(false);
-            return;
-        }
-
-        if (!HasAnchoredCable() || IsGrounded)
-            return;
-
-        SetHovering(true);
-    }
-
-    private void SetHovering(bool value)
-    {
-        if (IsHovering == value) return;
-
-        IsHovering = value;
-
-        if (IsHovering)
-        {
-            leftHoverRopeLength = IsLeftAnchored ? GetRopePathLength(true) : 0f;
-            rightHoverRopeLength = IsRightAnchored ? GetRopePathLength(false) : 0f;
-            if (!enableStatePhysics)
-                Rb.gravityScale = 0f;
-            RemoveHoverOutwardVelocity(true);
-            RemoveHoverOutwardVelocity(false);
-        }
-        else
-        {
-            if (!enableStatePhysics)
-                Rb.gravityScale = defaultGravityScale;
-        }
-    }
-
-    private void ApplyHoverTangentGravity()
-    {
-        Vector2 anchor = GetClosestEffectiveAnchor();
-        Vector2 fromAnchor = Rb.position - anchor;
-        if (fromAnchor.sqrMagnitude < 0.000001f) return;
-
-        Vector2 ropeDir = fromAnchor.normalized;
-        Vector2 gravity = Physics2D.gravity * defaultGravityScale;
-        Vector2 tangentGravity = gravity - ropeDir * Vector2.Dot(gravity, ropeDir);
-        Rb.AddForce(tangentGravity, ForceMode2D.Force);
-    }
-
-    private void ApplyHoverRopeLocks()
-    {
-        if (IsGrounded || !HasAnchoredCable())
-        {
-            SetHovering(false);
-            return;
-        }
-
-        LimitHoverRope(true);
-        LimitHoverRope(false);
-        RemoveHoverOutwardVelocity(true);
-        RemoveHoverOutwardVelocity(false);
-    }
-
-    private void LimitHoverRope(bool isLeft)
-    {
-        if (!(isLeft ? IsLeftAnchored : IsRightAnchored)) return;
-
-        float maxLength = isLeft ? leftHoverRopeLength : rightHoverRopeLength;
-        if (maxLength <= 0f) return;
-
-        float distance = GetRopePathLength(isLeft);
-        if (distance <= maxLength) return;
-
-        Vector2 limitPoint = GetEffectiveAnchor(isLeft);
-        Vector2 fromLimitPoint = Rb.position - limitPoint;
-        if (fromLimitPoint.sqrMagnitude < 0.000001f) return;
-
-        Vector2 away = fromLimitPoint.normalized;
-        Rb.position -= away * (distance - maxLength);
-    }
-
-    private void RemoveHoverOutwardVelocity(bool isLeft)
-    {
-        if (!(isLeft ? IsLeftAnchored : IsRightAnchored)) return;
-
-        Vector2 anchor = GetEffectiveAnchor(isLeft);
-        Vector2 fromAnchor = Rb.position - anchor;
-        if (fromAnchor.sqrMagnitude < 0.000001f) return;
-
-        Vector2 away = fromAnchor.normalized;
-        float outwardSpeed = Vector2.Dot(Rb.linearVelocity, away);
-        if (outwardSpeed > 0f)
-            Rb.linearVelocity -= away * outwardSpeed;
-    }
-
-    private Vector2 GetClosestEffectiveAnchor()
-    {
-        if (IsLeftAnchored && IsRightAnchored)
-        {
-            Vector2 left = GetEffectiveAnchor(true);
-            Vector2 right = GetEffectiveAnchor(false);
-            float leftDistance = ((Vector2)transform.position - left).sqrMagnitude;
-            float rightDistance = ((Vector2)transform.position - right).sqrMagnitude;
-            return leftDistance <= rightDistance ? left : right;
-        }
-
-        return IsLeftAnchored ? GetEffectiveAnchor(true) : GetEffectiveAnchor(false);
-    }
-
     private void LimitRope(bool isLeft)
     {
         if (!(isLeft ? IsLeftAnchored : IsRightAnchored)) return;
 
         float maxLength = isLeft ? leftRopeLength : rightRopeLength;
-        float distance = GetRopePathLength(isLeft);
+        Vector2 limitPoint = GetAnchorPosition(isLeft);
+        float distance = Vector2.Distance(Rb.position, limitPoint);
         if (distance <= maxLength) return;
 
-        Vector2 limitPoint = GetEffectiveAnchor(isLeft);
         Vector2 fromLimitPoint = Rb.position - limitPoint;
         if (fromLimitPoint.sqrMagnitude < 0.000001f) return;
 
         Vector2 away = fromLimitPoint.normalized;
+        Rb.position -= away * (distance - maxLength);
         // 超出普通摆荡绳长时，把刚体拉回边界，并阻止继续远离锚点的速度。
         Rb.position -= away * (distance - maxLength);
 
@@ -3211,7 +3138,7 @@ public class OdmController : MonoBehaviour
         }
 
         if (!HasActiveCable())
-            currentState = IsGrounded ? OdmState.Grounded : OdmState.Airborne;
+            currentState = ResolveCurrentState();
     }
 
     private void ClearLeftCable()
@@ -3276,39 +3203,19 @@ public class OdmController : MonoBehaviour
         if (!enableStatePhysics)
             return;
 
-        float targetGravity = GetStateGravityScale();
-        if (reduceGravityAtHighSpeed && !IsGrounded && targetGravity > 0f)
-            targetGravity *= GetHighSpeedGravityMultiplier();
-
-        float targetDamping = GetStateDamping();
-
-        Rb.gravityScale = Mathf.MoveTowards(
-            Rb.gravityScale,
-            targetGravity,
-            Mathf.Max(0f, gravityChangeSpeed) * Time.fixedDeltaTime);
-
-        Rb.linearDamping = Mathf.MoveTowards(
-            Rb.linearDamping,
-            targetDamping,
-            Mathf.Max(0f, dampingChangeSpeed) * Time.fixedDeltaTime);
+        Rb.gravityScale = GetStateGravityScale();
+        Rb.linearDamping = GetStateDamping();
     }
 
     private float GetStateGravityScale()
     {
         switch (currentState)
         {
-            case OdmState.Grounded:
-                return groundedGravityScale;
-            case OdmState.Pulling:
-                return IsGrounded ? groundedGravityScale : pullingGravityScale;
-            case OdmState.Swinging:
-                return swingingGravityScale;
-            case OdmState.Hovering:
-                return hoveringGravityScale;
-            case OdmState.Shooting:
-            case OdmState.Airborne:
+            case OdmState.RopeMobility:
+                return ropeMobilityGravityScale;
+            case OdmState.Daily:
             default:
-                return airborneGravityScale;
+                return IsGrounded ? dailyGroundGravityScale : dailyAirGravityScale;
         }
     }
 
@@ -3316,30 +3223,17 @@ public class OdmController : MonoBehaviour
     {
         switch (currentState)
         {
-            case OdmState.Grounded:
-                return groundedDamping;
-            case OdmState.Pulling:
-                return IsGrounded ? groundedDamping : pullingDamping;
-            case OdmState.Swinging:
-                return swingingDamping;
-            case OdmState.Hovering:
-                return hoveringDamping;
-            case OdmState.Shooting:
-            case OdmState.Airborne:
+            case OdmState.RopeMobility:
+                return ropeMobilityDamping;
+            case OdmState.Daily:
             default:
-                return airborneDamping;
+                return IsGrounded ? dailyGroundDamping : dailyAirDamping;
         }
-    }
-
-    private float GetHighSpeedGravityMultiplier()
-    {
-        float referenceSpeed = highSpeedGravityReference > 0f ? highSpeedGravityReference : maxSpeed;
-        float speedRatio = Mathf.Clamp01(Rb.linearVelocity.magnitude / Mathf.Max(referenceSpeed, 0.001f));
-        return Mathf.Lerp(1f, highSpeedGravityMinMultiplier, speedRatio);
     }
 
     private void ClampFallSpeed()
     {
+        float maxFallSpeed = Mathf.Max(0f, jumpSpeed);
         if (!limitFallSpeed || maxFallSpeed <= 0f || Rb.linearVelocity.y >= -maxFallSpeed)
             return;
 

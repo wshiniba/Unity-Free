@@ -21,7 +21,7 @@ public class DeathPlace : MonoBehaviour
     public bool onlyTeleportPlayer = true;
 
     [Header("传送行为")]
-    [Tooltip("传送前是否清除玩家左右触手和悬停状态。建议开启，避免旧锚点把玩家拉回死亡区域。")]
+    [Tooltip("传送前是否清除玩家左右触手。建议开启，避免旧锚点把玩家拉回死亡区域。")]
     public bool clearPlayerTentacles = true;
 
     [Tooltip("传送后是否清空玩家 Rigidbody2D 的线速度和角速度。建议开启，避免玩家带着坠落速度继续飞出检查点。")]
