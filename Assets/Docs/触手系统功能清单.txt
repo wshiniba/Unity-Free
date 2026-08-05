@@ -1,0 +1,854 @@
+当前功能与参数清单
+更新时间：2026-07-09
+
+说明：
+这份文档用于整理当前 Unity 项目已经实现的功能、主要 Inspector 参数、以及还没完善的事项。
+每个参数后面都写了它主要控制什么，方便后续调试和继续开发。
+
+
+1. 玩家基础移动
+
+状态：
+已做，可继续调手感。
+
+功能：
+- A/D 地面移动。
+- 跳跃。
+- 空中冲刺。
+- 最大速度限制。
+- 不同状态下切换重力和阻尼。
+- 高速时降低重力影响，避免高速移动时下坠过重。
+- 玩家左右翻转，碰撞体也跟随翻转。
+
+主要参数：OdmController
+- groundMoveSpeed：控制玩家在地面上的水平移动速度。
+- groundAcceleration：控制地面移动追上目标速度的加速度，越大响应越快。
+- jumpSpeed：控制玩家跳跃时向上的初始速度。
+- airDashForce：控制空中冲刺时施加的瞬时冲量。
+- maxSpeed：控制玩家 Rigidbody2D 最终允许的最大线速度。
+
+- stopDamping：控制紧急停止时速度被削减的比例，越小停得越快。
+- overrideRigidbodySettings：控制是否由 OdmController 覆盖 Rigidbody2D 的质量、阻尼、重力。
+- bodyMass：控制玩家刚体质量，只在 overrideRigidbodySettings 开启时生效。
+- bodyLinearDamping：控制玩家刚体线性阻尼，只在 overrideRigidbodySettings 开启时生效。
+- bodyGravityScale：控制玩家刚体默认重力倍率，只在 overrideRigidbodySettings 开启时生效。
+- enableStatePhysics：控制是否按当前 ODM 状态动态切换重力和阻尼。
+- groundedGravityScale：控制站在地面时的重力倍率。
+- airborneGravityScale：控制普通空中状态的重力倍率。
+- pullingGravityScale：控制按 Q 持续牵引时的重力倍率。
+- swingingGravityScale：控制摆荡状态的重力倍率。
+- hoveringGravityScale：控制悬停状态的重力倍率。
+- groundedDamping：控制站在地面时的线性阻尼。
+- airborneDamping：控制普通空中状态的线性阻尼。
+- pullingDamping：控制持续牵引状态的线性阻尼。
+- swingingDamping：控制摆荡状态的线性阻尼。
+- hoveringDamping：控制悬停状态的线性阻尼。
+- gravityChangeSpeed：控制不同状态之间重力倍率切换的速度。
+- dampingChangeSpeed：控制不同状态之间线性阻尼切换的速度。
+- limitFallSpeed：控制是否限制玩家最大下落速度。
+- maxFallSpeed：控制玩家允许的最大下落速度。
+- reduceGravityAtHighSpeed：控制高速移动时是否削弱重力影响。
+- highSpeedGravityMinMultiplier：控制高速时最低重力保留比例。
+- highSpeedGravityReference：控制开始按高速规则削弱重力的参考速度。
+- characterRenderer：控制用于左右翻转的玩家 SpriteRenderer。
+- facingInputThreshold：控制水平输入超过多少才更新玩家朝向。
+
+还没完善：
+- 移动手感后期还可以结合触手抓取、投掷、战斗节奏再统一调一次。
+
+
+2. 触手基础发射和连接
+
+状态：
+已做核心逻辑。
+
+功能：
+- 按住鼠标时触手持续伸出。
+- 松开鼠标时触手收回。
+- 鼠标位置超过最大长度时，触手只伸到最大长度。
+- 触手末端会被实体阻挡，不穿墙。
+- 触手碰到墙不会自动黏住，按 Q 才固定锚点。
+- 固定锚点后按 Q 可牵引玩家。
+- 左右两条触手独立工作。
+
+主要参数：OdmController
+- anchorableLayer：控制触手允许连接的目标层级。
+- solidLayer：控制哪些层被视为实体障碍，用于末端阻挡、滑动、身体防穿模。
+- groundLayer： 控制哪些层会被玩家判定为地面。
+- cableBendLayer：控制哪些层会让触手中段发生弯折和视觉防穿模。
+- leftAnchorPoint：控制左触手从哪个 Transform 位置发射。
+- rightAnchorPoint：控制右触手从哪个 Transform 位置发射。
+- maxCableLength：控制触手最大可伸出和可连接距离。
+- cableShootSpeed：控制触手末端发射和收回的速度。
+- anchorSurfaceOffset：控制锚点从碰撞表面向外偏移的距离，避免嵌进碰撞体。
+- pullForce：控制按 Q 时玩家被拉向锚点的力度。
+- allowGroundMoveWhileShooting：控制触手飞行但未连接时，玩家是否还能地面移动。
+
+Layer 当前规则：
+- anchorableLayer：可连接目标。
+- solidLayer：实体阻挡、末端滑动、玩家身体防穿模。
+- groundLayer：玩家踩地判定。
+- cableBendLayer：触手中段弯折和视觉防穿模。
+- GroundNoCableBend：玩家能踩，但触手不会因它弯折。
+
+还没完善：
+- 后面如果做更多平台类型，Layer 规则可能还要再细分，比如“可抓取但不阻挡末端”“可阻挡但不可连接”。
+
+
+3. 触手视觉：波浪、弹性、曲线
+
+状态：
+已做，已调过参数。
+
+功能：
+- 触手发射瞬间保留波浪形运动。
+- 触手存在时，中段会根据末端运动产生弯曲。
+- 中段弯曲会做防穿模。
+- 抓住敌人时可以保留触手弯曲感，不强行绷直。
+
+主要参数：OdmVisuals
+- leftCableRenderer：控制左触手使用哪个 LineRenderer 绘制。
+- rightCableRenderer：控制右触手使用哪个 LineRenderer 绘制。
+- enableShootWave：控制触手发射时是否显示波浪形视觉。
+- shootWaveSegments：控制发射波浪线的分段数量，越高越平滑。
+- shootWaveAmplitude：控制触手刚发射时主波浪的最大幅度。
+- shootWaveFrequency：控制主波浪在触手上的重复次数。
+- shootWaveSpeed：控制波浪沿触手滚动的速度。
+- shootWaveFadeDistance：控制触手飞出多远后波浪逐渐衰减成直线。
+- shootWaveSecondaryAmplitude：控制叠加细波的幅度。
+- shootWaveSecondaryFrequency：控制叠加细波的重复次数。
+- elasticMaxLagDistance：控制触手中段弹性弯曲允许偏离直线的最大距离。
+- elasticBendVelocityScale：控制触手末端速度转成中段弯曲幅度的倍率。
+- elasticBendSmoothTime：控制中段弯曲追随目标弯曲量的平滑时间。
+
+主要参数：OdmController
+- ropeBendOffset：控制触手绕过拐角时弯折点向外偏移的距离。
+- ropeCornerReleaseDistance：控制避免同一拐角反复生成弯折点的距离。
+- maxRopeBends：控制单根触手最多允许保留多少个弯折点。
+- cableBendLayer：控制哪些层会参与触手弯折和视觉防穿模。
+
+还没完善：
+- 当前是视觉弹性，不是完整物理绳索模拟。
+- 如果以后要真正软体触手，可能要做链式节点、Verlet、SpringJoint2D 或自定义曲线约束。
+- 目前方案更适合保留操作响应。
+
+
+4. 触手抽击伤害
+
+状态：
+已做。
+
+功能：
+- 触手飞行或甩动时扫到敌人可造成伤害。
+- 伤害和触手末端速度有关。
+- 速度太低不造成伤害。
+- 同一目标有命中冷却，避免连续刷伤害。
+
+主要参数：OdmController
+- tentacleHitLayer：控制触手飞行或甩动时会检测哪些层。
+- tentacleHitRadius：控制触手扫击判定的半径。
+- tentacleBaseDamage：控制触手抽击的基础伤害。
+- tentacleSpeedDamageScale：控制触手速度转换为额外伤害的倍率。
+- tentacleMinHitSpeed：控制触手速度低于多少时不造成抽击伤害。
+- tentacleHitCooldown：控制同一触手对同一目标重复造成伤害的间隔。
+
+还没完善：
+- 命中特效、音效、敌人受击动画还可以后面补。
+- 触手抽击的伤害公式后期可以接入成长系统。
+
+
+5. 触手抓取敌人
+
+状态：
+已做核心逻辑。
+
+功能：
+- 触手连接敌人后，如果触手力量大于等于敌人质量，可以抓取敌人。
+- 敌人会吸附到触手末端，随鼠标和触手运动。
+- 敌人质量决定能否抓取。
+- 敌人韧性不决定能否抓取，只影响被抓取后的拖拽迟滞。
+- 松开鼠标时敌人会按触手末端速度飞出。
+
+主要参数：OdmController
+- tentaclePower：控制触手力量，用来和敌人质量比较决定能否抓取。
+- throwAimDirectionMinSpeed：控制抓取目标速度达到多少时优先用甩动方向决定投掷方向，避免松手瞬间抖动或速度抵消导致方向不稳定。
+- allowTentacleAnchorEnemies：控制触手是否允许连接敌人。
+- allowEnemyGrab：控制触手连接敌人后是否允许进入抓取状态。
+- enemyGrabFollowForce：控制抓取敌人后触手拖动敌人的基础力度。
+- enemyGrabFollowDamping：控制抓取敌人时给敌人速度施加的阻尼。
+- enemyGrabResistanceScale：控制敌人质量和韧性对拖拽迟滞的影响倍率。
+- enemyGrabMaxSpeed：控制被抓取敌人的最大移动速度。
+- enemyGrabLocalOffset：控制敌人吸附到触手末端时的局部偏移。
+- enemyThrowVelocityScale：控制松开鼠标时触手末端速度转成投掷速度的倍率。
+- enemyThrowVelocitySmoothing：控制记录投掷速度时的平滑强度。
+- enemyThrowMinSpeed：控制投掷敌人时的最低速度。
+- enemyThrowMaxSpeed：控制投掷敌人时的最高速度。
+- enemyThrowCurrentVelocityInfluence：控制投掷时混入敌人自身当前速度的比例。
+- enemyThrowPlayerVelocityInheritance：控制投掷时继承玩家当前速度的比例。
+
+主要参数：Enemy
+- enemyMass：控制敌人质量，决定触手力量是否足够抓取。
+- grabTenacity：控制敌人被抓取后的挣扎韧性，只影响拖拽迟滞。
+
+还没完善：
+- 投掷速度公式已收敛到第一版：甩动方向优先，合成速度次之，低速时按玩家到目标方向兜底；还需要在 Unity 中用轻敌、重敌、场景物逐项实测手感。
+- 抓取敌人时的挣扎表现目前主要是数值迟滞，还没有动画或特效表现。
+
+
+6. 敌人投掷撞击伤害
+
+状态：
+已做。
+
+功能：
+- 敌人被触手甩出后，撞到实体会根据速度结算伤害。
+- 撞击速度太低不会造成伤害。
+- 可通过 LayerMask 控制哪些层会触发撞击伤害。
+
+主要参数：Enemy
+- tentacleThrowImpactWindow：控制敌人被甩出后，撞击伤害判定持续多久。
+- tentacleThrowMinImpactSpeed：控制撞击速度低于多少时不造成伤害。
+- tentacleThrowBaseDamage：控制投掷撞击的基础伤害。
+- tentacleThrowSpeedDamageScale：控制超过最低速度的部分转换为额外伤害的倍率。
+- tentacleThrowImpactLayer：控制敌人被甩出后撞到哪些层会结算撞击伤害。
+
+还没完善：
+- 投掷伤害公式和手感后期还需要一起调。
+
+
+7. 抓持抱摔伤害
+
+状态：
+已做。
+
+功能：
+- 敌人被触手抓着时，如果砸到实体表面，可按触手力量和撞击速度结算伤害。
+- 有冷却，避免连续多帧重复结算。
+
+主要参数：Enemy
+- allowTentacleHeldSmashDamage：控制被抓持敌人撞到实体时是否造成抱摔伤害。
+- tentacleHeldSmashMinImpactSpeed：控制抓持抱摔速度低于多少时不造成伤害。
+- tentacleHeldSmashBaseDamage：控制抓持抱摔的基础伤害。
+- tentacleHeldSmashPowerDamageScale：控制触手力量转换为抱摔额外伤害的倍率。
+- tentacleHeldSmashSpeedDamageScale：控制撞击速度转换为抱摔额外伤害的倍率。
+- tentacleHeldSmashCooldown：控制同一敌人两次抱摔伤害之间的最短间隔。
+- tentacleHeldSmashImpactLayer：控制抓持敌人撞到哪些层会结算抱摔伤害。
+
+还没完善：
+- 抱摔的动作表现目前还是基于物理撞击，没有专门动画。
+
+
+8. 场景物品抓取和投掷
+
+状态：
+已做基础模板。
+
+功能：
+- 场景物体挂 TentacleInteractableObject 后，可以被触手抓取。
+- 物体有质量和抗拒程度。
+- 松开鼠标可甩出。
+- 被甩出的物体撞到敌人或 Boss 可造成伤害。
+
+主要参数：OdmController
+- allowObjectGrab：控制触手是否允许抓取场景交互物。
+- throwAimDirectionMinSpeed：控制物品投掷时是否优先采用甩动方向，规则与敌人投掷共用。
+- objectGrabFollowForce：控制抓取场景物品后拖动物品的基础力度。
+- objectGrabFollowDamping：控制抓取场景物品时对物品速度施加的阻尼。
+- objectGrabResistanceScale：控制物品质量和抗拒程度对拖拽迟滞的影响倍率。
+- objectGrabMaxSpeed：控制被抓取场景物品的最大移动速度。
+- objectThrowVelocityScale：控制松开鼠标时触手末端速度转成物品投掷速度的倍率。
+- objectThrowVelocitySmoothing：控制记录物品投掷速度时的平滑强度。
+- objectThrowMinSpeed：控制投掷场景物品时的最低速度。
+- objectThrowMaxSpeed：控制投掷场景物品时的最高速度。
+- objectThrowCurrentVelocityInfluence：控制投掷时混入物品自身当前速度的比例。
+- objectThrowPlayerVelocityInheritance：控制投掷时继承玩家当前速度的比例。
+
+主要参数：TentacleInteractableObject
+- objectMass：控制场景物品质量，决定触手力量是否足够抓取。
+- grabTenacity：控制场景物品被抓取后的抗拒程度。
+- throwImpactWindow：控制物品被甩出后撞击伤害判定持续多久。
+- throwMinImpactSpeed：控制物品撞击速度低于多少时不造成伤害。
+- throwBaseDamage：控制物品投掷撞击的基础伤害。
+- throwSpeedDamageScale：控制物品撞击速度转换为额外伤害的倍率。
+- throwDamageLayer：控制物品被甩出后可以伤害哪些层。
+- clearThrowStateAfterDamage：控制物品成功造成一次伤害后是否立刻结束伤害窗口。
+
+还没完善：
+- 可交互场景物体的正式美术、破碎、机关联动还没做。
+- 这类物体的 Layer 要按用途配置，避免影响触手弯折。
+
+
+9. 单触手穿刺处决
+
+状态：
+已做。
+
+功能：
+- 敌人血量低于处决阈值时，血条上显示 E。
+- 按 E 后，触手自动飞向处决目标。
+- 不需要玩家先连接敌人。
+- 目标在触手最大长度内都可以触发。
+- 触手会穿出敌人一段距离，形成穿刺表现。
+- 穿刺处决会提高特殊掉落倍率。
+
+主要参数：OdmController
+- executionTargetLayer：控制按 E 自动寻找处决目标时检测哪些层。
+- executionSearchRadius：控制鼠标附近优先选择处决目标的范围。
+- allowPierceExecution：控制是否允许单触手穿刺处决。
+- pierceExecutionDuration：控制穿刺处决的最低表现时长。
+- pierceExecutionSpeed：控制穿刺触手飞向目标的速度。
+- pierceExecutionOverrunDistance：控制触手穿过敌人后继续伸出的距离。
+
+主要参数：Enemy
+- canBeExecuted：控制该敌人是否允许被触手处决。
+- executionHealthRatio：控制敌人血量低于多少比例时进入可处决状态。
+- pierceExecutionSpecialDropMultiplier：控制穿刺处决后特殊掉落倍率。
+
+还没完善：
+- 穿刺处决的动画、音效、粒子表现还可以继续加强。
+- 目标选择规则目前是实用版，后面可做 UI 高亮或锁定优先级。
+
+
+10. 双触手撕裂处决
+
+状态：
+已做，当前测试通过。
+
+功能：
+- 左右两条触手都连接同一个可处决敌人时，按 E 触发撕裂处决。
+- 左触手连接敌人左侧碎片，右触手连接敌人右侧碎片。
+- 撕裂过程中，左右碎片跟随各自触手端点逐渐分离。
+- 过程结束后才真正结算死亡，避免敌人在表现中途消失。
+- 撕裂使用 Shader 做左右半边显示，不需要真的拆模型。
+- 撕裂处决有更高特殊掉落倍率。
+
+主要参数：OdmController
+- allowTearExecution：控制是否允许双触手撕裂处决。
+- tearExecutionDuration：控制撕裂处决表现持续时间，结束后才结算死亡。
+- tearExecutionPullDistance：控制左右触手末端向两边拉开的距离。
+- tearExecutionCableSegments：控制撕裂处决专用触手曲线的分段数量。
+- tearExecutionCableOutwardBend：控制撕裂时触手中段向外侧弯曲的距离。
+- tearExecutionCableLowerBend：控制撕裂时靠近玩家一侧触手中段向下压的距离。
+- tearExecutionCenterClearance：控制撕裂时触手曲线离敌人中心线的最小水平距离。
+
+主要参数：Enemy
+- tearExecutionSpecialDropMultiplier：控制撕裂处决后特殊掉落倍率。
+- executionFragmentLifetime：控制撕裂后左右临时碎片存在多久。
+- executionFragmentSpeed：控制撕裂结束后临时碎片继续分开的速度。
+- executionFragmentShaderName：控制撕裂碎片使用的 Shader 名称。
+- executionFragmentSplit：控制 Sprite 沿横向哪里切成左右两半。
+- executionFragmentEdgeWidth：控制撕裂中心线边缘染色宽度。
+- executionFragmentEdgeColor：控制撕裂中心线边缘颜色。
+
+相关 Shader：
+- Free/Tear Split Sprite
+
+还没完善：
+- 撕裂死亡的碎片消散、血液、粒子、音效还没做。
+- 以后如果有不同敌人形状，可能要给个别敌人调 executionFragmentSplit 或碎片偏移。
+
+
+11. 敌人基础模板
+
+状态：
+已做，正在向可复用结构整理。
+
+功能：
+- CombatEntityBase 作为通用战斗单位基类。
+- Enemy 继承 CombatEntityBase。
+- BossController 也已经改为继承 CombatEntityBase。
+- 基础生命值、当前生命值、配置 ID、默认受击伤害放在基类。
+- 给后续 Excel 或 CSV 配置表预留了 configId 和应用入口。
+- Enemy 有生命、质量、韧性、受击、死亡、处决、投掷撞击等逻辑。
+
+主要参数：CombatEntityBase
+- configId：控制该单位在后续配置表中的唯一 ID。
+- maxHealth：控制该单位最大生命值。
+- hitBoxDamage：控制该单位接触玩家攻击判定框时默认受到的伤害。
+- currentHealth：显示或记录该单位当前生命值。
+
+主要参数：Enemy
+- enemyMass：控制敌人质量，影响触手能否抓取。
+- grabTenacity：控制敌人被抓取后的挣扎韧性。
+- enableHitKnockback：控制敌人受击时是否产生击退。
+- hitKnockbackBaseForce：控制受击基础击退力度。
+- hitKnockbackSpeedForce：控制攻击速度转换为额外击退力度的倍率。
+- hitKnockbackMaxSpeed：控制敌人受击击退后的最大速度。
+- hitFlashDuration：控制敌人受击闪烁总时长。
+- hitFlashInterval：控制敌人受击闪烁的透明度切换间隔。
+- hitFlashMinAlpha：控制敌人受击闪烁时的最低透明度。
+- enableDeathFade：控制普通死亡时是否淡出。
+- deathFadeDuration：控制普通死亡淡出持续时间。
+- disableCollidersOnDeath：控制普通死亡时是否禁用碰撞体。
+
+还没完善：
+- Excel 或 CSV 导入还没真正接入。
+- Boss 和小怪的继承结构已经开始整理，但 Boss 里还有不少 Boss 专属旧逻辑，后续可以继续拆干净。
+- 敌人攻击行为暂缓，等后续小怪模板方案。
+
+
+12. 敌人简易 AI
+
+状态：
+只保留了检测玩家后追踪，攻击行为暂缓。
+
+功能：
+- 小怪检测玩家。
+- 进入追踪范围后追踪玩家。
+- 可做基础地面和墙体探测。
+- 临时近战攻击保留开关，但不是当前重点。
+
+主要参数：EnemySimpleAI
+- detectionRange：控制小怪发现玩家的距离。
+- loseTargetRange：控制玩家离多远后小怪丢失目标。
+- moveSpeed：控制小怪追踪玩家时的移动速度。
+- acceleration：控制小怪速度变化的加速度。
+- stopDistance：控制小怪离玩家多近时停止靠近。
+- obstacleLayer：控制小怪地面和墙体探测使用哪些层。
+- groundProbeDistance：控制小怪向下检测地面的距离。
+- wallProbeDistance：控制小怪向前检测墙体的距离。
+- enableTemporaryMeleeAttack：控制是否启用临时近战攻击逻辑。
+- attackRange：控制小怪临时近战攻击距离。
+- attackCooldown：控制小怪临时近战攻击冷却。
+- attackDamage：控制小怪临时近战攻击伤害。
+- attackLayer：控制小怪临时攻击可以命中的层。
+
+还没完善：
+- 正式攻击行为、巡逻行为、受击反应、动画状态机还没做。
+- 等小怪模板方案后再继续。
+
+
+13. 敌人血条
+
+状态：
+已做。
+
+功能：
+- 世界空间 Sprite 血条。
+- 有背景、真实血量、缓冲血量。
+- 修改最大血量时，填充条会自动按最大值刷新。
+- 可处决时在血条上方显示 E。
+- 伤害数字生成位置以血条位置为基准。
+
+主要参数：EnemySimpleHealthBar
+- enemy：控制血条读取哪个 Enemy 的生命值。
+- backgroundRenderer：控制血条背景使用的 SpriteRenderer。
+- bufferRenderer：控制缓冲血量使用的 SpriteRenderer。
+- fillRenderer：控制真实血量使用的 SpriteRenderer。
+- executePromptText：控制可处决时显示 E 的 TextMesh。
+- localOffset：控制血条相对敌人中心的位置偏移。
+- width：控制满血时血条宽度。
+- height：控制血条高度。
+- layerDepthStep：控制血条各层之间的 Z 偏移，避免闪烁。
+- hideWhenFull：控制满血时是否隐藏血条。
+- showExecutePrompt：控制敌人可处决时是否显示 E 提示。
+- executePromptOffset：控制 E 提示相对血条中心的位置偏移。
+- executePrompt：控制处决提示显示的文字。
+- executePromptFontSize：控制处决提示字体大小。
+- executePromptCharacterSize：控制处决提示在世界空间中的缩放。
+- backgroundColor：控制血条背景颜色。
+- bufferColor：控制缓冲血量颜色。
+- fillColor：控制真实血量颜色。
+- executePromptColor：控制 E 提示颜色。
+- bufferLerpSpeed：控制缓冲血量追向真实血量的速度。
+- sortingLayerName：控制血条 SpriteRenderer 所在排序层。
+- sortingOrder：控制血条 SpriteRenderer 的排序顺序。
+
+还没完善：
+- 后续可替换成正式血条素材或 UI 方案。
+
+
+14. 伤害数字
+
+状态：
+已做。
+
+功能：
+- 敌人受伤时，在血条上方生成数字。
+- 数字会跳出并下落。
+- 位置跟随血条基准，适配不同体型敌人。
+
+主要参数：EnemyDamagePopup
+- enemy：控制监听哪个 Enemy 的受伤事件。
+- spawnOffset：控制伤害数字相对血条位置的生成偏移。
+- horizontalSpawnJitter：控制伤害数字生成时的随机水平偏移。
+- popupLifetime：控制伤害数字存在时间。
+- jumpHeight：控制伤害数字跳起的高度。
+- fallDistance：控制伤害数字下落的距离。
+- fontSize：控制伤害数字字体大小。
+- characterSize：控制伤害数字在世界空间中的缩放。
+- damageColor：控制伤害数字颜色。
+- sortingLayerName：控制伤害数字所在排序层。
+- sortingOrder：控制伤害数字排序顺序。
+
+还没完善：
+- 暴击、不同伤害类型颜色还没做。
+
+
+15. 玩家生命值和左上角血条
+
+状态：
+已做基础版。
+
+功能：
+- 玩家有生命值。
+- 受伤后有短暂无敌时间。
+- 左上角有玩家血条 UI。
+- UI 改成手动 Canvas 和素材绑定思路，不再强依赖代码自动生成定位。
+
+主要参数：PlayerHealth
+- maxHealth：控制玩家最大生命值。
+- currentHealth：显示或记录玩家当前生命值。
+- invulnerableDuration：控制玩家受伤后的无敌时间。
+
+主要参数：PlayerHealthBarUI
+- targetHealth：控制血条读取哪个 PlayerHealth。
+- fillImage：控制真实血量填充使用的 Image。
+- bufferImage：控制缓冲血量填充使用的 Image。
+- healthText：控制血量文字显示使用的 Text。
+- fillUpdateMode：控制血条通过 Image fillAmount 还是 RectTransform 宽度更新。
+- bufferLerpSpeed：控制缓冲血量追向真实血量的速度。
+- hideWhenNoTarget：控制没有绑定 PlayerHealth 时是否隐藏血条。
+- showHealthText：控制是否显示当前血量/最大血量文字。
+
+还没完善：
+- UI 素材替换、分辨率适配、正式 HUD 布局等后续按手动 Canvas 方式整理。
+- 玩家死亡流程还没完整做。
+
+
+16. 触手受击和弹反
+
+状态：
+已做核心逻辑。
+
+功能：
+- 敌方攻击命中触手线段时，可以算作玩家受伤。
+- C 键触发弹反窗口。
+- 弹反窗口内玩家会用 Shader 白闪。
+- 支持角色前方短时间弹反判定区。
+- 触手韧性大于等于攻击力，且该攻击允许弹反时，可以弹反。
+- 可弹反弹幕会反弹回去。
+- 弹反成功有短暂停顿。
+- 已修过全局 Time.timeScale 永久变慢问题，改为统一恢复。
+
+主要参数：OdmController
+- allowCableDamagePlayer：控制敌方攻击命中触手时是否算作玩家受伤。
+- cableHurtRadius：控制敌方攻击距离触手线段多近时算命中触手。
+- cableDamageCooldown：控制触手受击后重复扣血的冷却时间。
+- cableToughness：控制触手韧性，用来判断能否弹反攻击。
+- cableParryWindow：控制按 C 后弹反判定窗口持续时间。
+- cableParryCooldown：控制两次弹反之间的冷却时间。
+- cableParrySelfKnockback：控制弹反成功后玩家获得的轻微后坐力。
+- allowCableParryArea：控制是否启用角色前方弹反判定区。
+- cableParryAreaSize：控制弹反判定区的宽高。
+- cableParryAreaOffset：控制弹反判定区相对玩家碰撞体中心的偏移。
+- showCableParryAreaGizmo：控制选中玩家时是否显示弹反判定区 Gizmo。
+- cableParryFlashColor：控制弹反窗口内玩家 Shader 闪光颜色。
+- cableParryFlashMaxAlpha：控制弹反窗口开始时的最大闪白强度。
+- cableParryFlashShaderName：控制弹反闪光使用的 Shader 名称。
+- cableParrySuccessFlashDuration：控制弹反成功后的强闪持续时间。
+- cableParrySuccessFlashMaxAmount：控制弹反成功瞬间的最大闪白强度。
+- enableCableParryHitStop：控制弹反成功时是否触发命中停顿。
+- cableParryHitStopTimeScale：控制弹反成功停顿时的全局时间倍率。
+- cableParryHitStopDuration：控制弹反成功停顿持续时间。
+
+相关 Shader：
+- Free/Sprite Parry Flash
+
+还没完善：
+- 敌人攻击体系还没正式做，所以弹反目前主要面向 Boss 弹幕和临时攻击接口。
+- 弹反成功的音效、特效、UI 提示还没做。
+
+
+17. 玩家攻击
+
+状态：
+已有旧功能，保留。
+
+功能：
+- 四方向攻击判定框。
+- 根据玩家速度增加伤害。
+- 触发攻击动画参数。
+- 攻击冷却。
+
+主要参数：PlayerAttack
+- hitBoxRight：控制朝右攻击时启用的判定框。
+- hitBoxLeft：控制朝左攻击时启用的判定框。
+- hitBoxUp：控制朝上攻击时启用的判定框。
+- hitBoxDown：控制朝下攻击时启用的判定框。
+- characterRenderer：控制读取玩家朝向的 SpriteRenderer。
+- characterAnimator：控制播放攻击动画的 Animator。
+- attackTriggerName：控制攻击动画 Trigger 参数名。
+- attackActiveTime：控制攻击判定框启用时间。
+- useHitBoxAnimationDuration：控制是否优先使用判定框动画长度作为启用时间。
+- attackCooldown：控制两次攻击之间的最短间隔。
+- airborneDirectionMinSpeed：控制空中攻击方向低于多少速度时回退到玩家朝向。
+- baseDamage：控制玩家攻击基础伤害。
+- maxSpeedDamageBonus：控制达到参考速度时最多获得的额外伤害倍率。
+- speedDamageExponent：控制速度增伤曲线形状。
+- damageReferenceSpeed：控制计算速度增伤的参考速度。
+- logDamageDebugEveryFrame：控制是否每帧输出速度伤害调试日志。
+
+还没完善：
+- 武器系统未接入。
+- 攻击动作和触手系统之间的连携还没设计。
+
+
+18. 气体系统
+
+状态：
+已有基础版。
+
+功能：
+- ODM 行动可消耗气体。
+- 气体为 0 后限制 ODM 动作。
+
+主要参数：OdmGasSystem
+- maxGasCapacity：控制场景开始时气体最大容量。
+- currentGas：显示或记录当前剩余气体。
+- gasConsumeRate：控制按 Q 主动牵引时每秒消耗的气体量。
+
+还没完善：
+- 气体 UI、补给、升级暂未完善。
+
+
+19. 相机和速度表现
+
+状态：
+已有基础版。
+
+功能：
+- 玩家速度越快，相机视野变化。
+- 鼠标靠近屏幕边缘时，相机预瞄。
+- 支持速度线粒子。
+
+主要参数：OdmVisuals
+- virtualCamera：控制使用哪个 Cinemachine 虚拟相机。
+- mainCamera：控制未使用 Cinemachine 时的后备主相机。
+- baseOrthographicSize：控制玩家低速时的相机正交尺寸。
+- maxOrthographicSize：控制玩家高速时的相机正交尺寸。
+- cameraSizeChangeSpeed：控制相机尺寸变化速度。
+- enableMouseLookAhead：控制是否启用鼠标边缘预瞄。
+- horizontalLookAheadDistance：控制鼠标到屏幕左右边缘时相机水平预瞄距离。
+- verticalLookAheadDistance：控制鼠标到屏幕上下边缘时相机垂直预瞄距离。
+- lookAheadDeadZone：控制鼠标靠近屏幕中心时不触发预瞄的死区范围。
+- lookAheadSmoothTime：控制相机预瞄偏移的平滑时间。
+- speedLinesEffect：控制玩家高速时使用的速度线粒子效果。
+
+还没完善：
+- 速度线素材和相机参数可最后统一调。
+
+
+20. Boss 战基础
+
+状态：
+已有一版 Boss 原型，不是当前主线重点。
+
+功能：
+- Boss 战状态机。
+- Boss 位置切换。
+- 弹幕。
+- 地面陷阱。
+- Boss 可受击窗口。
+- 弹反 Boss 弹幕后可让 Boss 短暂停顿。
+- Boss 可生成可钩锁点。
+- Boss 继承 CombatEntityBase。
+
+主要参数：BossController
+- introDuration：控制 Boss 战开始后进入第一轮攻击前的等待时间。
+- vulnerableDuration：控制 Boss 每轮攻击后保持可受伤状态的时间。
+- hitDisappearDuration：控制 Boss 受击后隐藏多久再换位。
+- bossPositions：控制 Boss 可移动到的位置列表。
+- arenaCenter：控制 Boss 战区域中心。
+- arenaSize：控制 Boss 战区域尺寸。
+- hookableAnchorLayer：控制 Boss 生成的可钩锁点所在层级。
+- projectileSpeed：控制 Boss 弹幕飞行速度。
+- projectileLifetime：控制 Boss 弹幕自动销毁时间。
+- projectileDamage：控制 Boss 弹幕命中伤害。
+- projectileKnockback：控制 Boss 弹幕命中玩家时的击退力度。
+- trapWarningDuration：控制地面陷阱预警持续时间。
+- trapActiveDuration：控制地面陷阱真正生效持续时间。
+- trapDamage：控制地面陷阱命中伤害。
+- trapKnockback：控制地面陷阱命中玩家时的击退力度。
+- bossAnimator：控制 Boss 使用的 Animator。
+- hurtBoolParameterName：控制 Boss 受击动画 Bool 参数名。
+- attackBoolParameterName：控制 Boss 攻击动画 Bool 参数名。
+- fallbackHurtAnimationDuration：控制找不到受击动画时的兜底等待时间。
+- parryStunDuration：控制 Boss 攻击被弹反后暂停行为的时间。
+- parryStunTint：控制 Boss 被弹反打断时的显示颜色。
+- reflectedProjectileDamageMultiplier：控制反弹弹幕命中 Boss 时的伤害倍率。
+- hitFeedback：控制 Boss 受击时使用的命中反馈组件。
+
+还没完善：
+- Boss 设计还没最终定。
+- Boss 攻击、动画、美术、阶段逻辑都还可以继续重构。
+
+
+21. 掉落、背包、特殊掉落倍率
+
+状态：
+已做临时系统。
+
+功能：
+- 敌人死亡时按掉落表结算。
+- 处决可以提高特殊掉落倍率。
+- 掉落物可自动拾取。
+- 玩家有临时物品计数背包。
+- 没有正式物品预制体时，可生成临时拾取物。
+
+主要参数：EnemyLootDropper
+- lootEntries：控制敌人死亡时要结算的掉落项列表。
+- itemId：控制掉落物对应的物品配置 ID。
+- itemPrefab：控制成功掉落时生成的物品预制体。
+- dropChance：控制该掉落项的基础掉落概率。
+- affectedByExecutionBonus：控制该掉落项是否受处决特殊掉落倍率影响。
+- minAmount：控制成功掉落时的最小数量。
+- maxAmount：控制成功掉落时的最大数量。
+- spawnOffset：控制掉落物相对敌人位置的生成偏移。
+- spawnSpread：控制多个掉落物之间的水平散开距离。
+- logDropsWithoutPrefab：控制没有预制体时是否输出掉落调试日志。
+- spawnDefaultPickupWhenPrefabMissing：控制没有预制体时是否生成临时拾取物。
+- lastSpecialDropMultiplier：显示最近一次死亡结算使用的特殊掉落倍率。
+
+主要参数：LootPickup
+- itemId：控制拾取物对应的物品配置 ID。
+- amount：控制该拾取物代表的物品数量。
+- canAutoPickup：控制玩家碰到拾取物时是否自动拾取。
+- lifetime：控制拾取物存在多久后自动消失。
+- logPickup：控制拾取时是否输出调试日志。
+- pickupColor：控制临时拾取物颜色。
+- bobAmplitude：控制临时拾取物上下浮动幅度。
+- bobSpeed：控制临时拾取物上下浮动速度。
+
+主要参数：PlayerInventory
+- items：显示玩家当前拥有的物品列表。
+- logItemChanges：控制物品数量变化时是否输出调试日志。
+
+还没完善：
+- 正式背包 UI 未做。
+- 正式物品表、掉落表未接入。
+- 掉落物正式素材未接入。
+
+
+22. 触手成长系统
+
+状态：
+已做数据和临时升级入口，正式 UI 未接。
+
+功能：
+- 触手力量升级。
+- 触手韧性升级。
+- 触手长度升级。
+- 触手命中半径升级。
+- 触手受击半径升级。
+- 成长属性会同步到 OdmController。
+- 临时按键升级入口存在，但正式升级 UI 后再绑定。
+
+主要参数：TentacleProgression
+- controller：控制成长属性要同步到哪个 OdmController。
+- applyOnAwake：控制 Awake 时是否自动把成长属性应用到 OdmController。
+- powerLevel：控制触手力量等级。
+- basePower：控制 0 级时触手力量。
+- powerPerLevel：控制每级增加多少触手力量。
+- toughnessLevel：控制触手韧性等级。
+- baseToughness：控制 0 级时触手韧性。
+- toughnessPerLevel：控制每级增加多少触手韧性。
+- lengthLevel：控制触手长度等级。
+- baseMaxLength：控制 0 级时触手最大长度。
+- lengthPerLevel：控制每级增加多少触手最大长度。
+- hitRadiusLevel：控制触手抽击命中半径等级。
+- baseHitRadius：控制 0 级时触手抽击命中半径。
+- hitRadiusPerLevel：控制每级增加多少触手抽击命中半径。
+- hurtRadiusLevel：控制触手受击半径等级。
+- baseHurtRadius：控制 0 级时触手受击半径。
+- hurtRadiusPerLevel：控制每级增加多少触手受击半径。
+- currentPower：显示当前计算出的最终触手力量。
+- currentToughness：显示当前计算出的最终触手韧性。
+- currentMaxLength：显示当前计算出的最终触手最大长度。
+
+主要参数：TentacleUpgradeInput
+- inventory：控制升级消耗从哪个 PlayerInventory 读取。
+- progression：控制升级结果写入哪个 TentacleProgression。
+- upgrades：控制临时按键升级配置列表。
+- upgradeName：控制该升级项在 Inspector 和日志里的显示名称。
+- key：控制触发该升级项的临时测试按键。
+- upgradeType：控制该升级项提升哪个触手属性。
+- costItemId：控制该升级项消耗哪种物品 ID。
+- baseCost：控制 0 级升 1 级时的基础消耗数量。
+- costPerLevel：控制每升过 1 级后下一次升级额外增加的消耗。
+- levelsPerUpgrade：控制每次成功升级提升多少级。
+- logUpgradeResult：控制升级成功或失败时是否输出调试日志。
+
+还没完善：
+- 正式升级 UI 未做。
+- 升级数值平衡未做。
+- 是否挂载临时按键升级入口，需要按后续 UI 决定。
+
+
+23. 存档
+
+状态：
+代码保留，暂时不急着挂载。
+
+功能：
+- 可保存背包物品。
+- 可保存触手成长等级。
+- 使用 PlayerPrefs 临时存档。
+
+主要参数：PlayerProgressSave
+- inventory：控制存档读取和保存哪个玩家背包。
+- progression：控制存档读取和保存哪个触手成长组件。
+- saveKey：控制 PlayerPrefs 使用的存档键名。
+- loadOnStart：控制游戏开始时是否自动读取本地测试存档。
+- autoSaveOnInventoryChange：控制背包物品变化时是否自动保存。
+- autoSaveOnProgressionChange：控制触手等级变化时是否自动保存。
+- saveOnApplicationQuit：控制游戏退出时是否自动保存。
+- logSaveEvents：控制保存或读取时是否输出调试日志。
+
+还没完善：
+- 暂未正式挂载。
+- 正式存档和读档流程未做。
+- 后续可能要换成文件存档或正式存档系统。
+
+
+24. 命中反馈
+
+状态：
+已有基础版。
+
+功能：
+- 命中停顿。
+- 相机震动。
+- 可按命中速度放大震动。
+- 目前主要给 Boss 或重击反馈用。
+
+主要参数：HitFeedback
+- enableHitStop：控制是否启用命中停顿。
+- hitStopTimeScale：控制命中停顿期间的全局时间倍率。
+- hitStopDuration：控制命中停顿持续时间。
+- impulseSource：控制用于发出 Cinemachine 震动事件的组件。
+- impulseListener：控制接收 Cinemachine 震动事件的虚拟相机扩展。
+- virtualCamera：控制当前反馈尝试绑定的 Cinemachine 虚拟相机。
+- enableCameraShake：控制是否启用相机震动。
+- cameraShakeForce：控制相机震动基础强度。
+- scaleShakeByHitSpeed：控制是否让命中速度影响震动强度。
+- maxSpeedShakeMultiplier：控制速度带来的最大震动放大倍率。
+- horizontalOnlyShake：控制震动是否只产生左右方向。
+- autoAddImpulseListener：控制运行时是否自动给虚拟相机添加 ImpulseListener。
+- configureImpulseSourceOnAwake：控制 Awake 时是否自动配置 ImpulseSource 波形。
+
+还没完善：
+- 不同攻击类型的反馈分级还没做。
+
+
+当前最需要记住的未完善事项
+
+- 投掷速度公式已完成第一版稳定方向规则，下一步要在 Unity 里实测轻敌、重敌和场景物的投掷距离、撞墙伤害和低速释放手感。
+- 敌人正式攻击行为还没做，等待后续小怪模板方案。
+- Excel 或 CSV 配置表还没接入，只预留了 configId 和相关入口。
+- 升级 UI 还没接入，后续做 UI 后再绑定。
+- 存档代码保留，但暂时不挂载。
+- 玩家死亡流程还没完整做。
+- Boss 目前是原型，不是当前触手和小怪主线的最终结构。
+- 触手是“视觉弹性 + 曲线防穿模”，不是完整物理软体触手。
+- UI 素材和分辨率适配还要后续按手动 Canvas 方式整理。

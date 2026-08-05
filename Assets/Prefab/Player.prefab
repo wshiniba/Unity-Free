@@ -791,7 +791,13 @@ MonoBehaviour:
     m_Bits: 64
   solidLayer:
     serializedVersion: 2
-    m_Bits: 0
+    m_Bits: 320
+  groundLayer:
+    serializedVersion: 2
+    m_Bits: 448
+  cableBendLayer:
+    serializedVersion: 2
+    m_Bits: 320
   leftAnchorPoint: {fileID: 4618497513254266202}
   rightAnchorPoint: {fileID: 5671267679570341393}
   anchorRaycastDistance: 30

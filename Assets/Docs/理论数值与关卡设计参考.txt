@@ -1,0 +1,586 @@
+理论数值与关卡设计参考
+更新时间：2026-06-22
+
+用途：
+这份文档用于关卡排布、平台距离、战斗空间尺寸、敌人血量和伤害平衡的早期参考。
+数据来自当前代码、Player 2 预制体、TestScence 中 Player 2 的覆盖参数和 Enemy 模板。
+
+注意：
+1. “硬上限”表示代码中有明确 clamp 或固定参数，可靠度较高。
+2. “估算”表示受 Unity 物理积分、碰撞、帧率、鼠标操作、状态切换影响，只能作为关卡初稿参考。
+3. 当前 Unity 世界单位可以先按“1 单位 = 1 米感”来理解，但最终仍以实际手感测试为准。
+
+
+一、当前关键参数来源
+
+玩家对象：
+/Player 2
+
+玩家预制体：
+Assets/Prefab/Player 2.prefab
+
+核心控制脚本：
+Assets/Scripts/触手/OdmController.cs
+
+触手视觉脚本：
+Assets/Scripts/触手/OdmVisuals.cs
+
+玩家攻击脚本：
+Assets/Scripts/玩家/PlayerAttack.cs
+
+敌人脚本：
+Assets/Scripts/敌人/Enemy.cs
+
+场景物品脚本：
+Assets/Scripts/触手/TentacleInteractableObject.cs
+
+当前 TestScence 对 Player 2 的重要覆盖：
+- tentacleHitCooldown = 1 秒。
+
+
+二、玩家移动理论数据
+
+地面水平速度：
+- 参数：groundMoveSpeed = 20
+- 理论最大地面水平速度：20 单位/秒
+- 关卡参考：纯地面跑动 1 秒约 20 单位。
+
+地面加速度：
+- 参数：groundAcceleration = 100
+- 从静止加速到地面满速 20 的理论时间：20 / 100 = 0.2 秒
+- 关卡参考：玩家地面起步很快，不适合用很短平台强行限制起步距离。
+
+跳跃初速度：
+- 参数：jumpSpeed = 25
+- 起跳时会把 Rigidbody2D 的 y 速度提升到至少 25。
+
+土狼时间：
+- 参数：coyoteTime = 0.1 秒
+- 玩家刚离开平台后的 0.1 秒内仍可跳跃。
+- 关卡参考：平台边缘跳跃有一定容错。
+
+空中重力：
+- 参数：airborneGravityScale = 12
+- Unity 默认重力约 9.81，因此满空中重力约 117.72 单位/秒²。
+- 但重力会通过 gravityChangeSpeed 从当前状态平滑切换，不是起跳瞬间完全变成 12 倍。
+
+理论跳跃高度估算：
+- 保守简化估算：约 2.7 单位。
+- 考虑重力平滑切换后的实际可能高度：约 3 到 5 单位。
+- 关卡参考：如果设计“必须跳上去”的平台，高差建议先控制在 3 单位以内；超过 4 单位需要实测确认。
+
+理论上升时间估算：
+- 满空中重力下约 0.21 秒到达顶点。
+- 考虑重力平滑切换后可能略长。
+
+最大下落速度：
+- 参数：maxFallSpeed = 60
+- 理论最大下落速度：60 单位/秒
+- 关卡参考：高处坠落很快，长竖井需要留足视野、缓冲平台或触手可操作空间。
+
+玩家总速度硬上限：
+- 参数：maxSpeed = 70
+- 玩家 Rigidbody2D 速度超过 70 会被压回 70。
+- 关卡参考：所有玩家运动，包括摆荡、牵引、冲刺后，最终都会受 70 单位/秒限制。
+
+空中冲刺：
+- 参数：airDashForce = 40
+- 触发时给玩家当前方向增加一次冲量。
+- 由于 maxSpeed = 70，冲刺不能让总速度突破 70。
+
+紧急停止：
+- 参数：stopDamping = 0.5
+- 触发时当前速度乘以 0.5。
+- 关卡参考：玩家有一定刹车能力，不是完全无法控速。
+
+
+三、触手机动理论数据
+
+触手最大长度：
+- 参数：maxCableLength = 40
+- 理论最大可伸出距离：40 单位
+- 单触手可连接、抓取、穿刺处决的基础距离参考都是 40 单位。
+
+触手发射速度：
+- 参数：cableShootSpeed = 200
+- 理论发射速度：200 单位/秒
+- 从 0 伸到最大长度 40 的理论时间：40 / 200 = 0.2 秒
+- 关卡参考：触手发射非常快，40 单位以内的目标几乎是瞬时可达。
+
+Q 牵引力：
+- 参数：pullForce = 300
+- 这是持续施加的 Force，不是直接速度。
+- 最终玩家速度仍受 maxSpeed = 70 限制。
+- 关卡参考：Q 拉拽可以很快把玩家加速到高机动状态。
+
+摆荡水平力：
+- 参数：swingForce = 20
+- 摆荡时 A/D 会给玩家水平施力。
+- 最终仍受 maxSpeed = 70 限制。
+
+触手末端锚点表面偏移：
+- 参数：anchorSurfaceOffset = 0.01
+- 锚点会从碰撞点向法线方向稍微偏移，避免卡进墙体。
+
+触手弯折数量：
+- 参数：maxRopeBends = 10
+- 单根触手最多保留 10 个弯折点。
+- 关卡参考：复杂多拐角空间里触手能绕很多次，但过度复杂会增加玩家理解成本。
+
+触手弯折点偏移：
+- 参数：ropeBendOffset = 0.08
+- 触手绕角时弯折点离碰撞表面的安全距离。
+
+触手弯折释放距离：
+- 参数：ropeCornerReleaseDistance = 0.2
+- 用于避免同一角落反复生成弯折点。
+
+
+四、关卡尺寸建议
+
+普通地面横向距离：
+- 玩家地面速度 20 单位/秒。
+- 5 单位宽平台：约 0.25 秒跑过。
+- 10 单位宽平台：约 0.5 秒跑过。
+- 20 单位宽平台：约 1 秒跑过。
+
+纯跳跃平台高差：
+- 建议初稿高差：2 到 3 单位。
+- 4 单位以上需要实测，可能接近极限或依赖移动状态。
+
+纯跑跳横向间距：
+- 当前项目没有精确独立的“跳跃水平速度锁定”，玩家空中会受惯性和 maxSpeed 影响。
+- 如果按地面速度 20 和上升时间约 0.2 到 0.35 秒粗估，普通跳跃能跨的安全水平距离建议先从 4 到 8 单位测试。
+- 如果允许空中冲刺或触手，横向距离可以大幅增加。
+
+触手可达距离：
+- 单触手最大长度 40 单位。
+- 建议把普通可钩点间距控制在 20 到 35 单位。
+- 40 单位是理论极限，不建议频繁要求玩家极限瞄准。
+
+高速机动空间：
+- 玩家最大速度 70 单位/秒。
+- 如果希望玩家有 0.5 秒反应空间，前方至少留约 35 单位。
+- 如果希望玩家有 1 秒反应空间，前方至少留约 70 单位。
+
+竖向坠落空间：
+- 最大下落速度 60 单位/秒。
+- 从很高处落下时，20 单位高度可能在约 0.3 秒量级穿过。
+- 长竖井建议加触手可操作点、平台、敌人或视觉提示。
+
+
+五、玩家普通攻击伤害
+
+脚本：
+PlayerAttack
+
+当前参数：
+- baseDamage = 1
+- maxSpeedDamageBonus = 2
+- speedDamageExponent = 1.5
+- damageReferenceSpeed = 0，表示使用 OdmController.maxSpeed。
+- 当前 maxSpeed = 70，所以参考速度 = 70。
+
+公式：
+speedRatio = clamp01(当前玩家速度 / 70)
+damageMultiplier = 1 + 2 * pow(speedRatio, 1.5)
+damage = round(baseDamage * damageMultiplier)，最低为 1。
+
+理论伤害区间：
+- 最小伤害：1
+- 最大伤害：3
+
+速度与伤害参考：
+- 0 单位/秒：1 伤害
+- 20 单位/秒：约 1.30 倍，四舍五入后 1 伤害
+- 40 单位/秒：约 1.86 倍，四舍五入后 2 伤害
+- 60 单位/秒：约 2.59 倍，四舍五入后 3 伤害
+- 70 单位/秒及以上：3 伤害
+
+关卡参考：
+- 普通攻击目前伤害跨度很小，主要是 1 到 3。
+- 如果敌人血量较高，主要伤害来源会更偏向触手抽击、投掷、处决或多次攻击。
+
+
+六、触手抽击伤害
+
+脚本：
+OdmController
+
+当前参数：
+- tentacleBaseDamage = 1
+- tentacleSpeedDamageScale = 0.08
+- tentacleMinHitSpeed = 4
+- tentacleHitCooldown = 1 秒，TestScence 对 Player 2 有覆盖。
+- tentacleHitRadius = 0.18
+
+公式：
+如果触手速度 < 4，不造成伤害。
+damage = 1 + floor((触手速度 - 4) * 0.08)，最低为 1。
+
+触手速度参考：
+- 触手发射速度 cableShootSpeed = 200。
+- 甩动时末端速度受鼠标输入、目标点变化和发射速度限制影响。
+
+理论伤害区间：
+- 低于 4 单位/秒：0 伤害。
+- 达到 4 单位/秒后：至少 1 伤害。
+- 如果按触手飞行速度上限 200 计算，理论最高约 16 伤害。
+
+速度与伤害参考：
+- 4 单位/秒：1 伤害
+- 10 单位/秒：1 伤害
+- 20 单位/秒：2 伤害
+- 40 单位/秒：3 伤害
+- 80 单位/秒：7 伤害
+- 120 单位/秒：10 伤害
+- 160 单位/秒：13 伤害
+- 200 单位/秒：16 伤害
+
+关卡参考：
+- 触手高速抽击理论伤害很高。
+- 如果敌人血量较低，触手抽击可能快速秒杀。
+- 当前 Enemy 模板 maxHealth = 100，所以触手抽击更多是削血和制造处决机会。
+
+
+七、触手抓取敌人和投掷速度
+
+脚本：
+OdmController + Enemy
+
+当前玩家参数：
+- tentaclePower = 2
+- throwAimDirectionMinSpeed = 1.2
+- enemyGrabFollowForce = 55
+- enemyGrabFollowDamping = 7
+- enemyGrabResistanceScale = 1
+- enemyGrabMaxSpeed = 24
+- enemyThrowVelocityScale = 1
+- enemyThrowVelocitySmoothing = 18
+- enemyThrowMinSpeed = 4
+- enemyThrowMaxSpeed = 32
+- enemyThrowCurrentVelocityInfluence = 0.35
+- enemyThrowPlayerVelocityInheritance = 0.35
+
+当前 Enemy 模板参数：
+- enemyMass = 1
+- grabTenacity = 0
+
+抓取资格：
+触手力量 >= 敌人质量。
+当前 2 >= 1，所以模板敌人可以被抓取。
+
+抓取移动速度硬上限：
+- enemyGrabMaxSpeed = 24
+- 被触手抓着移动时，敌人速度会被限制在 24 单位/秒。
+
+投掷速度公式：
+combinedVelocity =
+抓取目标速度 * enemyThrowVelocityScale
++ 敌人当前速度 * enemyThrowCurrentVelocityInfluence
++ 玩家当前速度 * enemyThrowPlayerVelocityInheritance
+
+方向选择：
+- 如果抓取目标速度达到 throwAimDirectionMinSpeed，优先使用抓取目标速度方向，保证甩动意图最清楚。
+- 如果抓取目标速度太低，则使用 combinedVelocity 方向。
+- 如果 combinedVelocity 也接近 0，则使用玩家到被抓目标/当前锚点方向兜底。
+
+速度处理：
+- 使用 combinedVelocity 的速度大小。
+- 如果低于 enemyThrowMinSpeed，会沿选定方向补到 4。
+- 如果高于 enemyThrowMaxSpeed，会沿选定方向压到 32。
+
+敌人甩出最大速度硬上限：
+- enemyThrowMaxSpeed = 32 单位/秒
+
+关卡参考：
+- 被甩出的敌人最大飞行速度按 32 单位/秒规划。
+- 0.5 秒飞行约 16 单位。
+- 1 秒飞行约 32 单位。
+- 2 秒飞行约 64 单位，但撞击窗口只有 2 秒。
+
+
+八、敌人投掷撞击伤害
+
+脚本：
+Enemy
+
+当前参数：
+- tentacleThrowImpactWindow = 2 秒
+- tentacleThrowMinImpactSpeed = 6
+- tentacleThrowBaseDamage = 1
+- tentacleThrowSpeedDamageScale = 0.25
+- enemyThrowMaxSpeed = 32
+
+公式：
+如果撞击速度 < 6，不造成投掷撞击伤害。
+damage = 1 + floor((撞击速度 - 6) * 0.25)
+
+理论伤害区间：
+- 低于 6 单位/秒：0 伤害。
+- 6 到 32 单位/秒：1 到 7 伤害。
+- 以当前投掷速度上限 32 撞墙，理论最大约 7 伤害。
+
+速度与伤害参考：
+- 6 单位/秒：1 伤害
+- 10 单位/秒：2 伤害
+- 16 单位/秒：3 伤害
+- 20 单位/秒：4 伤害
+- 24 单位/秒：5 伤害
+- 28 单位/秒：6 伤害
+- 32 单位/秒：7 伤害
+
+关卡参考：
+- 如果想让投掷撞墙有意义，墙面和敌人的间距建议给 10 到 30 单位。
+- 投掷撞击窗口为 2 秒，按 32 单位/秒最多覆盖约 64 单位。
+
+
+九、抓持抱摔伤害
+
+脚本：
+Enemy
+
+当前参数：
+- allowTentacleHeldSmashDamage = true
+- tentacleHeldSmashMinImpactSpeed = 4
+- tentacleHeldSmashBaseDamage = 1
+- tentacleHeldSmashPowerDamageScale = 0.5
+- tentacleHeldSmashSpeedDamageScale = 0.15
+- tentacleHeldSmashCooldown = 0.35 秒
+- tentaclePower = 2
+- enemyGrabMaxSpeed = 24
+
+公式：
+如果撞击速度 < 4，不造成抱摔伤害。
+powerDamage = floor(触手力量 * 0.5)
+speedDamage = floor((撞击速度 - 4) * 0.15)
+damage = 1 + powerDamage + speedDamage
+
+当前触手力量下：
+powerDamage = floor(2 * 0.5) = 1
+
+理论伤害区间：
+- 低于 4 单位/秒：0 伤害。
+- 4 到 24 单位/秒：约 2 到 5 伤害。
+
+速度与伤害参考：
+- 4 单位/秒：2 伤害
+- 8 单位/秒：2 伤害
+- 12 单位/秒：3 伤害
+- 16 单位/秒：3 伤害
+- 20 单位/秒：4 伤害
+- 24 单位/秒：5 伤害
+
+关卡参考：
+- 抱摔伤害比高速触手抽击低，但更稳定。
+- 适合做“把敌人按到墙/地面上”的控制型伤害。
+
+
+十、场景物品抓取和投掷
+
+脚本：
+OdmController + TentacleInteractableObject
+
+当前玩家参数：
+- throwAimDirectionMinSpeed = 1.2
+- objectGrabFollowForce = 55
+- objectGrabFollowDamping = 7
+- objectGrabResistanceScale = 1
+- objectGrabMaxSpeed = 24
+- objectThrowVelocityScale = 1
+- objectThrowVelocitySmoothing = 18
+- objectThrowMinSpeed = 4
+- objectThrowMaxSpeed = 32
+- objectThrowCurrentVelocityInfluence = 0.35
+- objectThrowPlayerVelocityInheritance = 0.35
+
+默认物品参数：
+- objectMass = 1
+- grabTenacity = 0
+- throwImpactWindow = 2 秒
+- throwMinImpactSpeed = 5
+- throwBaseDamage = 1
+- throwSpeedDamageScale = 0.25
+
+抓取资格：
+触手力量 >= 物体质量。
+当前默认 2 >= 1，所以默认物体可被抓取。
+
+物品抓取速度硬上限：
+- objectGrabMaxSpeed = 24 单位/秒
+
+物品甩出最大速度硬上限：
+- objectThrowMaxSpeed = 32 单位/秒
+
+物品投掷撞击伤害公式：
+如果撞击速度 < 5，不造成伤害。
+damage = 1 + floor((撞击速度 - 5) * 0.25)
+
+理论伤害区间：
+- 低于 5 单位/秒：0 伤害。
+- 5 到 32 单位/秒：1 到 7 伤害。
+
+速度与伤害参考：
+- 5 单位/秒：1 伤害
+- 10 单位/秒：2 伤害
+- 16 单位/秒：3 伤害
+- 20 单位/秒：4 伤害
+- 24 单位/秒：5 伤害
+- 28 单位/秒：6 伤害
+- 32 单位/秒：7 伤害
+
+
+十一、处决阈值和处决效果
+
+当前 Enemy 模板：
+- maxHealth = 100
+- executionHealthRatio = 0.25
+- 可处决血量阈值：100 * 0.25 = 25 血及以下
+
+单触手穿刺处决：
+- pierceExecutionSpecialDropMultiplier = 1.5
+- pierceExecutionSpeed = 85
+- pierceExecutionOverrunDistance = 1.1
+- maxCableLength = 40
+- 理论最远穿刺飞行表现时间约：(40 + 1.1) / 85 = 0.48 秒
+- pierceExecutionDuration = 0.06 是最低表现时长。
+
+双触手撕裂处决：
+- tearExecutionSpecialDropMultiplier = 2
+- tearExecutionDuration = 0.55 秒
+- tearExecutionPullDistance = 2.2
+- tearExecutionCableSegments = 14
+
+关卡参考：
+- 处决属于终结手段，不应按普通伤害设计。
+- 如果敌人血量为 100，则玩家需要把敌人打到 25 血以下再处决。
+- 双触手撕裂需要空间让左右触手表现，敌人周围至少留 3 到 5 单位视觉空间比较稳。
+
+
+十二、弹反相关数据
+
+当前参数：
+- cableToughness = 2
+- cableParryWindow = 0.12 秒
+- cableParryCooldown = 0.25 秒
+- cableParryAreaSize = 1.6 x 2.0
+- cableParryAreaOffset = (0.8, 0)
+- cableParryHitStopTimeScale = 0.04
+- cableParryHitStopDuration = 0.04 秒
+
+弹反判定：
+敌方攻击力 <= cableToughness，且该攻击允许弹反。
+当前基础韧性为 2，所以攻击力 2 及以下可被弹反。
+
+关卡参考：
+- 弹反窗口很短，只有 0.12 秒。
+- 适合设计清晰预警的弹幕或攻击。
+- 如果攻击预警不明显，玩家很难稳定弹反。
+
+
+十三、气体与续航
+
+当前 Player 2：
+- maxGasCapacity = 1000000
+- gasConsumeRate = 5
+
+理论续航：
+- 如果只按 Q 拉拽消耗，理论可持续 1000000 / 5 = 200000 秒。
+
+关卡参考：
+- 当前气体基本等于无限。
+- 现阶段不建议用气体限制关卡路线，除非后续重新平衡气体容量。
+
+
+十四、Enemy 模板参考
+
+TestScence 当前 Enemy：
+- maxHealth = 100
+- enemyMass = 1
+- grabTenacity = 0
+- executionHealthRatio = 0.25
+- 25 血及以下可处决。
+
+受到不同攻击的大致意义：
+- 玩家普通攻击：1 到 3 伤害。
+- 触手抽击：1 到 16 理论伤害，取决于触手速度。
+- 投掷撞击：1 到 7 伤害。
+- 抓持抱摔：2 到 5 伤害。
+- 处决：满足条件后直接终结。
+
+关卡参考：
+- 100 血敌人偏耐打，适合测试触手系统，不适合大量密集摆放。
+- 如果小怪希望 3 到 5 次有效攻击解决，血量可以先测试 10 到 25。
+- 如果小怪主要靠处决终结，血量可以高一些，但需要保证玩家能清楚看到 E 提示。
+
+
+十五、建议的早期关卡灰盒尺寸
+
+普通平台宽度：
+- 小平台：6 到 10 单位。
+- 中平台：12 到 20 单位。
+- 大战斗平台：25 到 45 单位。
+
+普通跳跃高差：
+- 安全：1 到 3 单位。
+- 需要实测：3 到 5 单位。
+- 不建议只靠跳跃：5 单位以上。
+
+触手机动空间：
+- 单个锚点到玩家常规距离：15 到 30 单位。
+- 高机动长距离点位：30 到 40 单位。
+- 不建议频繁把关键锚点放在 40 单位极限处。
+
+战斗房间横向尺寸：
+- 小型敌人战斗：25 到 40 单位。
+- 允许投掷敌人撞墙：40 到 70 单位。
+- 高速摆荡战斗：60 单位以上。
+
+竖向空间：
+- 普通房间高度：8 到 15 单位。
+- 触手摆荡房间高度：15 到 30 单位。
+- 长竖井：30 单位以上时建议放置中继平台或可交互物。
+
+敌人投掷撞墙空间：
+- 想让投掷撞墙容易发生：敌人到墙 8 到 20 单位。
+- 想让玩家需要主动瞄准甩出：敌人到墙 20 到 40 单位。
+- 超过 64 单位可能超出当前 2 秒投掷伤害窗口。
+
+
+十六、当前数值风险
+
+1. 触手抽击理论最大伤害 16，远高于普通攻击和投掷撞击。
+如果玩家容易打出高速抽击，小怪血量需要相应提高，或后续降低 tentacleSpeedDamageScale。
+
+2. 玩家最大速度 70 很高。
+高速房间需要足够大，否则玩家容易撞墙或失去读图时间。
+
+3. 触手最大长度 40 很长。
+如果关卡里可钩点太密，玩家可能跳过大量平台设计。
+
+4. 当前气体近似无限。
+关卡不能假设气体会限制玩家路线。
+
+5. Enemy 模板 100 血偏测试用。
+正式小怪血量需要重新分层，不建议直接用 100 作为普通小怪标准。
+
+6. 投掷速度最大 32，但伤害最高只有 7。
+如果希望投掷成为主要攻击手段，需要提高投掷伤害倍率或降低普通小怪血量。
+
+
+十七、后续建议补充的数据
+
+1. 实测最大跳跃高度。
+建议在 TestScence 放刻度墙，记录纯跳跃实际高度。
+
+2. 实测摆荡最大水平距离。
+建议放两个 Wall 锚点，记录玩家从一个平台摆到另一个平台的舒适距离。
+
+3. 实测触手抽击常见速度。
+理论上限是 200，但玩家实际甩动常见速度可能低很多。
+
+4. 实测敌人投掷距离。
+记录轻敌人和高韧性敌人的实际甩出轨迹。
+
+5. 建立正式小怪血量表。
+建议按 10、20、35、60、100 几档测试。

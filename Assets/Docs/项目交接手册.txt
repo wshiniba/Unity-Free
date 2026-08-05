@@ -1,0 +1,519 @@
+Unity 项目交接手册
+更新时间：2026-06-22
+
+用途：
+这份文档用于新会话、新协作者或后续继续开发时快速理解当前项目状态。
+项目目前核心方向是：2D 横版动作 + 高机动触手/绳索系统 + 敌人抓取投掷 + 处决 + 成长系统。
+
+
+一、项目基本信息
+
+项目路径：
+D:/user/Free
+
+主要测试场景：
+Assets/Scenes/TestScence.unity
+
+主要玩家对象：
+/Player 2
+
+主要玩家预制体：
+Assets/Prefab/Player 2.prefab
+
+备用旧玩家预制体：
+Assets/Prefab/Player.prefab
+
+主要文档目录：
+Assets/Docs
+
+当前功能总清单：
+Assets/Docs/触手系统功能清单.txt
+
+
+二、开发沟通约定
+
+1. 主要测试场景优先使用 TestScence。
+2. 用户希望 Inspector 中新增参数都有中文 Tooltip 标注。
+3. 用户偏好手动搭建 UI Canvas，再由脚本绑定引用，不喜欢 UI 全部由代码自动生成。
+4. 新功能不要只停在方案，除非用户明确说“先别改代码”。
+5. 如果改了场景、预制体或资源，应刷新 Unity 并保存。
+6. 不要随意删除或回退用户已有改动。
+7. 当前项目中有一些文档和脚本迁移痕迹，处理前先查现有文件位置。
+
+
+三、当前脚本分类
+
+Boss：
+Assets/Scripts/首领
+
+核心：
+Assets/Scripts/核心
+
+敌人：
+Assets/Scripts/敌人
+
+反馈：
+Assets/Scripts/反馈
+
+物品：
+Assets/Scripts/物品
+
+玩家：
+Assets/Scripts/玩家
+
+玩家 UI：
+Assets/Scripts/玩家/界面
+
+成长：
+Assets/Scripts/成长
+
+存档：
+Assets/Scripts/存档
+
+触手/ODM：
+Assets/Scripts/触手
+
+Shader：
+Assets/Shaders
+
+
+四、核心脚本速览
+
+OdmController：
+路径：Assets/Scripts/触手/OdmController.cs
+职责：玩家移动、触手发射、触手连接、锚点、抓取敌人、抓取物体、投掷、处决、弹反、触手受击、LayerMask 判定等核心逻辑。
+
+OdmVisuals：
+路径：Assets/Scripts/触手/OdmVisuals.cs
+职责：触手 LineRenderer 绘制、发射波浪、触手弹性弯曲、相机视野变化、鼠标预瞄、速度线。
+
+OdmInput：
+路径：Assets/Scripts/触手/OdmInput.cs
+职责：读取鼠标键盘输入，并调用 OdmController。
+
+OdmGasSystem：
+路径：Assets/Scripts/触手/OdmGasSystem.cs
+职责：ODM 气体消耗。
+
+TentacleInteractableObject：
+路径：Assets/Scripts/触手/TentacleInteractableObject.cs
+职责：可被触手抓取、甩出的场景交互物。
+
+CombatEntityBase：
+路径：Assets/Scripts/核心/CombatEntityBase.cs
+职责：敌人、Boss 等战斗单位共用的 configId、生命值、受伤事件、死亡事件。
+
+Enemy：
+路径：Assets/Scripts/敌人/Enemy.cs
+职责：普通敌人生命、质量、韧性、受击击退、死亡、触手投掷撞击、抱摔、穿刺处决、撕裂处决。
+
+EnemySimpleAI：
+路径：Assets/Scripts/敌人/EnemySimpleAI.cs
+职责：当前只重点保留检测玩家后追踪。正式攻击行为暂缓。
+
+EnemySimpleHealthBar：
+路径：Assets/Scripts/敌人/EnemySimpleHealthBar.cs
+职责：敌人世界空间血条、缓冲血量、可处决 E 提示。
+
+EnemyDamagePopup：
+路径：Assets/Scripts/敌人/EnemyDamagePopup.cs
+职责：敌人受伤时在血条附近生成跳字。
+
+EnemyLootDropper：
+路径：Assets/Scripts/敌人/EnemyLootDropper.cs
+职责：敌人死亡掉落，处决倍率影响特殊掉落。
+
+PlayerHealth：
+路径：Assets/Scripts/玩家/PlayerHealth.cs
+职责：玩家生命值、受伤无敌、死亡事件。
+
+PlayerHealthBarUI：
+路径：Assets/Scripts/玩家/界面/PlayerHealthBarUI.cs
+职责：玩家左上角血条 UI，使用手动绑定的 Image/Text。
+
+PlayerAttack：
+路径：Assets/Scripts/玩家/PlayerAttack.cs
+职责：玩家旧版四方向攻击，带速度增伤。
+
+TentacleProgression：
+路径：Assets/Scripts/成长/TentacleProgression.cs
+职责：触手力量、韧性、长度、命中半径、受击半径成长，并同步到 OdmController。
+
+TentacleUpgradeInput：
+路径：Assets/Scripts/成长/TentacleUpgradeInput.cs
+职责：临时按键升级入口。正式升级 UI 后可以不用它。
+
+PlayerInventory：
+路径：Assets/Scripts/物品/PlayerInventory.cs
+职责：临时物品计数背包。
+
+LootPickup：
+路径：Assets/Scripts/物品/LootPickup.cs
+职责：临时掉落物拾取。
+
+PlayerProgressSave：
+路径：Assets/Scripts/存档/PlayerProgressSave.cs
+职责：临时 PlayerPrefs 存档。当前代码保留，但按用户要求暂时不急着挂载。
+
+BossController：
+路径：Assets/Scripts/首领/BossController.cs
+职责：Boss 原型状态机、弹幕、陷阱、可受击窗口、弹反受制等。
+
+HitFeedback：
+路径：Assets/Scripts/反馈/HitFeedback.cs
+职责：命中停顿和相机震动反馈。
+
+TimeScaleHitStop：
+路径：Assets/Scripts/核心/TimeScaleHitStop.cs
+职责：统一管理 Time.timeScale，避免多个顿帧互相覆盖导致永久变慢。
+
+
+五、主要输入约定
+
+鼠标左键：
+发射/控制左触手。
+
+鼠标右键：
+发射/控制右触手。
+
+松开鼠标：
+收回触手；如果触手抓着敌人或物体，会按当前速度甩出。
+
+Q：
+如果触手末端接触可锚定目标，则固定锚点。
+如果已有锚点，则用于拉拽玩家。
+
+E：
+触发触手处决。
+如果左右触手都连接同一个可处决敌人，优先触发双触手撕裂处决。
+否则尝试单触手穿刺处决。
+
+C：
+触发弹反窗口。
+
+Space：
+跳跃。
+目前已加入土狼时间 coyoteTime。
+
+W：
+切换悬停。
+
+LeftShift：
+紧急停止。
+
+A/D 或 Horizontal：
+水平移动和朝向控制。
+
+
+六、Layer 规则
+
+当前自定义 Layer：
+Layer 6：Wall
+Layer 7：GroundNoCableBend
+Layer 8：GroundNoHook
+
+OdmController 中的主要 LayerMask：
+
+anchorableLayer：
+控制触手允许选中并固定为锚点的层。
+当前 Player 2 默认值只包含 Wall。
+
+solidLayer：
+控制哪些层会被视为实体障碍。
+用于触手末端阻挡、末端沿表面滑动、玩家身体防穿模。
+当前 Player 2 默认值包含 Wall + GroundNoHook。
+
+groundLayer：
+控制哪些层会被玩家判定为地面。
+当前 Player 2 默认值包含 Wall + GroundNoCableBend + GroundNoHook。
+
+cableBendLayer：
+控制哪些层会让触手中段发生弯折和视觉防穿模。
+当前 Player 2 默认值包含 Wall + GroundNoHook。
+
+GroundNoCableBend：
+玩家能踩，但触手不会因它弯折。
+适合只想让玩家站上去、不影响触手曲线的物体。
+
+GroundNoHook：
+行为基本等同 Wall，会阻挡玩家和触手末端，也会让触手弯折。
+区别是不会被触手选中并固定为锚点。
+
+重要历史问题：
+曾经 GroundNoHook 仍能被 Q 固定为锚点。
+原因是代码只判断触手末端是否接触 solidLayer，没有再检查该接触物是否属于 anchorableLayer。
+已修复：OdmController 现在记录触手末端接触的 Collider，并在 Q 固定普通表面前检查 anchorableLayer。
+
+
+七、触手系统当前状态
+
+已实现：
+- 按住鼠标持续伸出触手。
+- 松开鼠标收回触手。
+- 触手最大长度限制。
+- 触手末端不穿墙。
+- 触手碰到墙不自动固定，按 Q 才固定。
+- Q 固定后可以拉拽玩家。
+- 两条触手独立控制。
+- 触手飞行和甩动可抽击敌人。
+- 触手中段可产生弹性弯曲。
+- 发射瞬间保留波浪视觉。
+- 中段弯曲可防穿模。
+- 触手可以抓取敌人。
+- 触手可以抓取场景物体。
+- 松开鼠标可甩出敌人或物体。
+- 触手受到敌方攻击可算玩家受伤。
+- C 键弹反窗口。
+- 弹反成功可反弹弹幕，并有短暂停顿和 Shader 白闪。
+
+关键参数位置：
+OdmController、OdmVisuals。
+
+后续重点：
+- 投掷敌人的手感和速度公式还需要最后优化。
+- 触手视觉是“曲线视觉弹性”，不是完整软体物理模拟。
+- 如果后续要真正软体触手，可能需要链式节点、Verlet 或 Joint 系统。
+
+
+八、敌人系统当前状态
+
+已实现：
+- Enemy 继承 CombatEntityBase。
+- Enemy 有最大生命、当前生命、质量、抓取韧性。
+- Enemy 可受触手抽击、玩家攻击、投掷撞击、抱摔伤害。
+- Enemy 有简单受击闪烁和死亡淡出。
+- Enemy 有简易世界空间血条。
+- Enemy 受伤时有伤害数字跳出。
+- Enemy 血量低于阈值时可处决，并显示 E 提示。
+- Enemy 死亡可以结算掉落。
+
+敌人质量和触手力量：
+触手力量大于等于 enemyMass 才能抓取敌人。
+
+敌人韧性：
+grabTenacity 不决定能否抓取，只影响被抓取后的拖拽迟滞。
+
+待做：
+- 正式小怪攻击行为暂缓。
+- 用户后续会给小怪模板方案。
+- 敌人属性后续希望通过 Excel/CSV 配置表导入。
+- 当前已通过 CombatEntityBase.configId 预留配置表入口，但导入系统还没做。
+
+
+九、处决系统当前状态
+
+单触手穿刺处决：
+- 不需要玩家提前连接敌人。
+- 敌人可处决时，按 E 自动飞出触手穿刺敌人。
+- 目标在触手最大长度内都可以触发。
+- 触手会穿出敌人一段距离。
+- 会提高特殊物品掉落倍率。
+
+双触手撕裂处决：
+- 需要左右两条触手都连接同一个可处决敌人。
+- 按 E 触发。
+- 左触手拉左碎片，右触手拉右碎片。
+- 敌人沿竖直中心线被撕开。
+- 撕裂过程结束后才结算死亡。
+- 使用 Shader 分割 Sprite，不需要真实拆模型。
+
+相关 Shader：
+Free/Tear Split Sprite
+
+待做：
+- 撕裂粒子、血液、音效、碎片消散等表现还没做。
+- 不同敌人形状可能需要单独调 executionFragmentSplit 或偏移。
+
+
+十、玩家生命与 UI 当前状态
+
+已实现：
+- PlayerHealth 负责玩家生命值。
+- 玩家受伤后有短暂无敌时间。
+- 左上角血条 UI 已有基础版。
+- PlayerHealthBarUI 使用手动绑定方式。
+
+用户偏好：
+UI 不要完全代码生成。
+建议在场景里手动创建 Canvas、Image、Text，再把引用拖到脚本上。
+
+待做：
+- 玩家死亡流程还没完整做。
+- 正式 HUD 布局和素材替换还没做。
+- 分辨率适配还要后续按手动 Canvas 方式整理。
+
+
+十一、成长、掉落、背包、存档
+
+成长系统：
+TentacleProgression 已做。
+包含力量、韧性、长度、抽击命中半径、触手受击半径。
+会同步到 OdmController。
+
+升级入口：
+TentacleUpgradeInput 是临时按键升级入口。
+后续正式升级 UI 接入后，可以复用 TryUpgrade 思路，但不一定保留按键入口。
+
+背包：
+PlayerInventory 是临时物品计数器。
+
+掉落：
+EnemyLootDropper 支持简易掉落表。
+处决可提高特殊掉落倍率。
+没有正式掉落预制体时，可生成临时拾取物。
+
+存档：
+PlayerProgressSave 代码保留。
+当前暂时不急着挂载。
+后续可保存背包物品和触手成长等级。
+
+待做：
+- 正式升级 UI。
+- 正式背包 UI。
+- 正式物品表和掉落表。
+- 正式存档流程。
+
+
+十二、Boss 当前状态
+
+Boss 是已有原型，不是当前主线最终结构。
+
+已实现：
+- Boss 状态机。
+- Boss 位置切换。
+- Boss 弹幕。
+- 地面陷阱。
+- 可受击窗口。
+- 弹反弹幕后 Boss 可短暂停顿。
+- Boss 继承 CombatEntityBase。
+- Boss 可生成可钩锁点。
+
+待做：
+- Boss 设计未最终定。
+- Boss 攻击、动画、美术、阶段逻辑都还可以继续重构。
+- Boss 与新触手系统的最终交互还没完全整理。
+
+
+十三、Shader 当前使用
+
+Free/Tear Split Sprite：
+用于双触手撕裂处决时，把同一个 Sprite 按竖直切线分成左右两半显示。
+
+Free/Sprite Parry Flash：
+用于玩家弹反窗口和弹反成功时的白色闪光。
+
+注意：
+用户希望弹反高亮不要通过叠加 Sprite 覆盖层或直接改角色颜色，而是通过 Shader 做。
+
+
+十四、最近修过的重要问题
+
+1. 触手中段穿模
+已通过触手曲线防穿模和 cableBendLayer 处理。
+
+2. 撕裂处决左右触手连接错边
+已修为左触手拉左碎片，右触手拉右碎片。
+
+3. 弹反后 Time.timeScale 永久变慢
+已通过 TimeScaleHitStop 统一管理和恢复。
+
+4. 玩家左上角血条不显示
+已调整 PlayerHealthBarUI 和 UI 绑定方式。
+
+5. GroundNoHook 仍能被触手钩住
+已修复普通表面锚点过滤，现在 Q 固定前会检查 anchorableLayer。
+
+6. 跳跃容错不足
+已新增 coyoteTime 土狼时间。
+
+
+十五、当前最重要的未完成事项
+
+1. 投掷敌人的速度和手感需要最终优化。
+2. 敌人正式攻击行为还没做，等待用户给小怪模板方案。
+3. Excel 或 CSV 配置表导入还没接入。
+4. 升级 UI 还没接入。
+5. 背包 UI 还没做。
+6. 存档代码保留，但暂时未正式挂载。
+7. 玩家死亡流程还没完整做。
+8. Boss 目前仍是原型。
+9. 正式 UI 素材和分辨率适配还没整理。
+10. 触手是视觉弹性方案，不是完整物理软体方案。
+
+
+十六、给新会话的建议接手顺序
+
+如果用户说“继续下一步”，建议先确认当前大方向：
+1. 是否继续触手手感优化。
+2. 是否继续敌人模板。
+3. 是否接升级 UI。
+4. 是否接配置表。
+5. 是否做玩家死亡或 HUD。
+
+如果没有明确方向，优先建议：
+1. 优化敌人投掷手感。
+2. 梳理敌人模板和配置表接口。
+3. 接正式升级 UI。
+
+如果涉及 Layer：
+先查 ProjectSettings/TagManager.asset 和 Player 2 的 OdmController LayerMask。
+不要只看 Unity 面板印象，LayerMask 很容易因为预制体覆盖或场景覆盖产生误判。
+
+如果涉及触手锚点：
+区分以下概念：
+- solidLayer：能碰撞/阻挡。
+- cableBendLayer：能让触手弯折。
+- groundLayer：能踩。
+- anchorableLayer：能被 Q 固定为锚点。
+
+如果涉及可交互物：
+TentacleInteractableObject 的抓取现在也会受 anchorableLayer 过滤。
+想让某个物体能被触手抓取，除了挂组件，还要确认它的 Layer 在 anchorableLayer 里。
+
+
+十七、常用文件快速入口
+
+主控制器：
+Assets/Scripts/触手/OdmController.cs
+
+触手视觉：
+Assets/Scripts/触手/OdmVisuals.cs
+
+输入：
+Assets/Scripts/触手/OdmInput.cs
+
+敌人：
+Assets/Scripts/敌人/Enemy.cs
+
+敌人 AI：
+Assets/Scripts/敌人/EnemySimpleAI.cs
+
+敌人血条：
+Assets/Scripts/敌人/EnemySimpleHealthBar.cs
+
+伤害数字：
+Assets/Scripts/敌人/EnemyDamagePopup.cs
+
+玩家生命：
+Assets/Scripts/玩家/PlayerHealth.cs
+
+玩家血条 UI：
+Assets/Scripts/玩家/界面/PlayerHealthBarUI.cs
+
+触手成长：
+Assets/Scripts/成长/TentacleProgression.cs
+
+掉落：
+Assets/Scripts/敌人/EnemyLootDropper.cs
+
+背包：
+Assets/Scripts/物品/PlayerInventory.cs
+
+存档：
+Assets/Scripts/存档/PlayerProgressSave.cs
+
+功能清单：
+Assets/Docs/触手系统功能清单.txt
+
+本交接手册：
+Assets/Docs/项目交接手册.txt

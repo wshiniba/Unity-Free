@@ -822,7 +822,13 @@ MonoBehaviour:
     m_Bits: 64
   solidLayer:
     serializedVersion: 2
-    m_Bits: 0
+    m_Bits: 320
+  groundLayer:
+    serializedVersion: 2
+    m_Bits: 448
+  cableBendLayer:
+    serializedVersion: 2
+    m_Bits: 320
   leftAnchorPoint: {fileID: 1380912025921062973}
   rightAnchorPoint: {fileID: 5008486341755541927}
   anchorRaycastDistance: 40
@@ -833,6 +839,7 @@ MonoBehaviour:
   groundMoveSpeed: 20
   groundAcceleration: 100
   jumpSpeed: 25
+  coyoteTime: 0.1
   swingForce: 20
   pullForce: 300
   allowGroundMoveWhileShooting: 1
