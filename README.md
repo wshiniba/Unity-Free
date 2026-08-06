@@ -1,6 +1,6 @@
-# 王世丰.skill
+#t
 
-> "蒸馏出的纯粹CS精华，永生的CS灵魂"
+> ""
 
 ![License](https://img.shields.io/badge/License-MIT-blue)
 ![Python](https://img.shields.io/badge/Python-3.9+-green)
