@@ -806,7 +806,6 @@ MonoBehaviour:
   anchorSurfaceOffset: 0.01
   groundMoveSpeed: 8
   groundAcceleration: 60
-  swingForce: 10
   pullForce: 100
   airDashForce: 20
   burstReleaseDistance: 1.2

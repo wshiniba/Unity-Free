@@ -6,6 +6,8 @@ public enum OdmState
 {
     Daily,
 
+    CableAirborne,
+
     RopeMobility
 }
 
@@ -550,6 +552,7 @@ public class OdmController : MonoBehaviour
         throwAimDirectionMinSpeed = Mathf.Max(0f, throwAimDirectionMinSpeed);
         groundMoveSpeed = Mathf.Max(0f, groundMoveSpeed);
         ropeMobilityHorizontalSpeed = Mathf.Max(0f, ropeMobilityHorizontalSpeed);
+        maxSpeed = Mathf.Max(0f, maxSpeed);
 
         enemyThrowVelocityScale = Mathf.Max(0f, enemyThrowVelocityScale);
         enemyThrowVelocitySmoothing = Mathf.Max(0f, enemyThrowVelocitySmoothing);
@@ -661,6 +664,11 @@ public class OdmController : MonoBehaviour
         ClampFallSpeed();
         UpdateWalkAnimation();
         UpdateAirborneAnimation();
+    }
+
+    void LateUpdate()
+    {
+        ClampMaxSpeed();
     }
 
     public void SetHorizontalInput(float input)
@@ -1764,6 +1772,12 @@ public class OdmController : MonoBehaviour
             return;
         }
 
+        if (HasAnchoredCable())
+        {
+            currentState = OdmState.CableAirborne;
+            return;
+        }
+
         currentState = OdmState.Daily;
     }
 
@@ -1776,6 +1790,9 @@ public class OdmController : MonoBehaviour
         {
             case OdmState.RopeMobility:
                 ApplyRopeMobilityMovement();
+                return;
+            case OdmState.CableAirborne:
+                ApplyCableAirborneMovement();
                 return;
             case OdmState.Daily:
             default:
@@ -1822,11 +1839,15 @@ public class OdmController : MonoBehaviour
             gasSystem.HandleContinuousConsumption(Time.fixedDeltaTime);
         }
 
-        ApplyRopeMobilityHorizontalMovement();
-
+        ApplyCableLimitedHorizontalMovement();
     }
 
-    private void ApplyRopeMobilityHorizontalMovement()
+    private void ApplyCableAirborneMovement()
+    {
+        ApplyCableLimitedHorizontalMovement();
+    }
+
+    private void ApplyCableLimitedHorizontalMovement()
     {
         if (Mathf.Abs(horizontalInput) <= MoveInputDeadZone || ropeMobilityHorizontalSpeed <= 0f)
             return;
@@ -1849,6 +1870,9 @@ public class OdmController : MonoBehaviour
         if (ropeMobilityActive)
             return OdmState.RopeMobility;
 
+        if (HasAnchoredCable())
+            return OdmState.CableAirborne;
+
         return OdmState.Daily;
     }
 
@@ -1860,8 +1884,11 @@ public class OdmController : MonoBehaviour
         Vector2 target = GetEffectiveAnchor(isLeft);
         if (IsBlockedToward(target)) return;
 
-        Vector2 dir = (target - (Vector2)transform.position).normalized;
-        Rb.AddForce(dir * pullForce, ForceMode2D.Force);
+        Vector2 toTarget = target - Rb.position;
+        if (toTarget.sqrMagnitude < 0.000001f) return;
+
+        Vector2 velocityChange = toTarget.normalized * (pullForce / Mathf.Max(Rb.mass, 0.0001f)) * Time.fixedDeltaTime;
+        Rb.linearVelocity = ClampVelocityToMaxSpeed(Rb.linearVelocity + velocityChange);
     }
 
     private void ApplyEnemyGrabControl()
@@ -3213,6 +3240,7 @@ public class OdmController : MonoBehaviour
         {
             case OdmState.RopeMobility:
                 return ropeMobilityGravityScale;
+            case OdmState.CableAirborne:
             case OdmState.Daily:
             default:
                 return IsGrounded ? dailyGroundGravityScale : dailyAirGravityScale;
@@ -3225,6 +3253,7 @@ public class OdmController : MonoBehaviour
         {
             case OdmState.RopeMobility:
                 return ropeMobilityDamping;
+            case OdmState.CableAirborne:
             case OdmState.Daily:
             default:
                 return IsGrounded ? dailyGroundDamping : dailyAirDamping;
@@ -3242,7 +3271,18 @@ public class OdmController : MonoBehaviour
 
     private void ClampMaxSpeed()
     {
-        if (Rb.linearVelocity.magnitude > maxSpeed)
-            Rb.linearVelocity = Rb.linearVelocity.normalized * maxSpeed;
+        Rb.linearVelocity = ClampVelocityToMaxSpeed(Rb.linearVelocity);
+    }
+
+    private Vector2 ClampVelocityToMaxSpeed(Vector2 velocity)
+    {
+        float speedLimit = Mathf.Max(0f, maxSpeed);
+        if (velocity.sqrMagnitude <= speedLimit * speedLimit)
+            return velocity;
+
+        if (speedLimit <= 0f)
+            return Vector2.zero;
+
+        return velocity.normalized * speedLimit;
     }
 }
