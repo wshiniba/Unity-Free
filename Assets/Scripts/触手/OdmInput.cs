@@ -56,7 +56,7 @@ public class OdmInput : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.Q))
         {
-            if (controller.TryAnchorTouchedCable())
+            if (controller.TryAnchorTouchedCable(mouseWorld))
                 suppressPullUntilQReleased = true;
             else
                 controller.BeginPullKey();

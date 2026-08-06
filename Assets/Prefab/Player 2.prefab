@@ -1121,6 +1121,7 @@ GameObject:
   - component: {fileID: 3992076163265495764}
   - component: {fileID: 4825957461178946916}
   - component: {fileID: 7814601772176285072}
+  - component: {fileID: 2718281828459045235}
   - component: {fileID: 590912240735879002}
   - component: {fileID: 3327485810622782207}
   - component: {fileID: 1967909653089996923}
@@ -1289,7 +1290,6 @@ MonoBehaviour:
   rightAnchorPoint: {fileID: 5008486341755541927}
   maxCableLength: 20
   cableShootSpeed: 200
-  anchorSurfaceOffset: 0.01
   tentacleHitLayer:
     serializedVersion: 2
     m_Bits: 4294967295
@@ -1436,6 +1436,35 @@ MonoBehaviour:
   lookAheadDeadZone: 0.15
   lookAheadSmoothTime: 0.18
   speedLinesEffect: {fileID: 0}
+--- !u!114 &2718281828459045235
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6223286822208780199}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3f82a44bd3c64e748b17be6b8dc0f191, type: 3}
+  m_Name: ""
+  m_EditorClassIdentifier: Assembly-CSharp::OdmCableFeedback
+  audioSource: {fileID: 0}
+  masterVolume: 1
+  shootClip: {fileID: 0}
+  sceneAnchorClip: {fileID: 0}
+  enemyAnchorClip: {fileID: 0}
+  objectAnchorClip: {fileID: 0}
+  releaseClip: {fileID: 0}
+  failClip: {fileID: 0}
+  shootVolume: 1
+  anchorVolume: 1
+  releaseVolume: 1
+  failVolume: 1
+  enableAnchorHitStop: 1
+  anchorHitStopTimeScale: 0.08
+  anchorHitStopDuration: 0.035
+  visuals: {fileID: 7814601772176285072}
+  enableAnchorWave: 1
 --- !u!95 &590912240735879002
 Animator:
   serializedVersion: 7

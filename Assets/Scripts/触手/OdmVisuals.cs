@@ -45,6 +45,34 @@ public class OdmVisuals : MonoBehaviour
     [Tooltip("细波在整条绳索上的重复次数。")]
     public float shootWaveSecondaryFrequency = 6f;
 
+    [Header("绳索钩中波浪")]
+    [InspectorName("启用钩中波浪")]
+    [Tooltip("开启后，绳索刚钩中目标时会让中段短暂抖动，再回到真实绳索路径。只影响视觉，不影响钩锁判定。")]
+    public bool enableAnchorWave = true;
+
+    [InspectorName("钩中波浪分段数")]
+    [Tooltip("钩中波浪使用的分段数。数值越高越平滑，但 LineRenderer 点数也越多。")]
+    [Range(4, 48)]
+    public int anchorWaveSegments = 18;
+
+    [InspectorName("钩中波浪幅度")]
+    [Tooltip("钩中波浪允许偏离真实绳索路径的最大幅度。实际幅度还会受绳长比例限制。")]
+    public float anchorWaveAmplitude = 1.2f;
+
+    [InspectorName("钩中波浪绳长比例上限")]
+    [Tooltip("钩中波浪最大幅度占当前绳长的比例，用于避免短绳出现过大的视觉偏移。")]
+    [Range(0f, 0.5f)]
+    public float anchorWaveMaxLengthRatio = 0.12f;
+
+    [InspectorName("钩中波浪持续时间")]
+    [Tooltip("钩中波浪持续时间，使用真实时间，不受顿帧影响。")]
+    public float anchorWaveDuration = 0.24f;
+
+    [InspectorName("钩中波浪抖动次数")]
+    [Tooltip("钩中后绳索中段来回抖动的次数。")]
+    [Range(1, 4)]
+    public int anchorWaveOscillations = 2;
+
     [Header("触手弹性视觉")]
     [Tooltip("触手中段弹性弯曲允许偏离直线的最大距离。")]
     public float elasticMaxLagDistance = 2.5f;
@@ -104,6 +132,8 @@ public class OdmVisuals : MonoBehaviour
     private Vector2 lookAheadVelocity;
     private Vector3[] leftShootWavePoints;
     private Vector3[] rightShootWavePoints;
+    private Vector3[] leftAnchorWavePoints;
+    private Vector3[] rightAnchorWavePoints;
     private Vector3[] leftElasticPoints;
     private Vector3[] rightElasticPoints;
     private Vector2 leftElasticBend;
@@ -114,6 +144,10 @@ public class OdmVisuals : MonoBehaviour
     private Vector3 rightPreviousTip;
     private bool leftElasticInitialized;
     private bool rightElasticInitialized;
+    private bool leftAnchorWaveActive;
+    private bool rightAnchorWaveActive;
+    private float leftAnchorWaveStartTime;
+    private float rightAnchorWaveStartTime;
 
     /// <summary>
     /// 缓存引用，并在未指定相机时使用主相机。
@@ -154,6 +188,15 @@ public class OdmVisuals : MonoBehaviour
         if (!line.enabled)
         {
             ResetElasticState(isLeft);
+            ResetAnchorWaveState(isLeft);
+            return;
+        }
+
+        if (ShouldDrawAnchorWave(isLeft, path))
+        {
+            Vector3[] anchorWavePath = BuildAnchorWavePath(path, isLeft);
+            line.positionCount = anchorWavePath.Length;
+            line.SetPositions(anchorWavePath);
             return;
         }
 
@@ -171,6 +214,22 @@ public class OdmVisuals : MonoBehaviour
 
         line.positionCount = drawPath.Length;
         line.SetPositions(drawPath);
+    }
+
+    public void PlayAnchorWave(bool isLeft)
+    {
+        if (isLeft)
+        {
+            leftAnchorWaveActive = true;
+            leftAnchorWaveStartTime = Time.unscaledTime;
+        }
+        else
+        {
+            rightAnchorWaveActive = true;
+            rightAnchorWaveStartTime = Time.unscaledTime;
+        }
+
+        ResetElasticState(isLeft);
     }
 
     private bool ShouldDrawElasticCable(bool isLeft, Vector3[] path)
@@ -300,6 +359,67 @@ public class OdmVisuals : MonoBehaviour
         return points;
     }
 
+    private bool ShouldDrawAnchorWave(bool isLeft, Vector3[] path)
+    {
+        if (!enableAnchorWave || path == null || path.Length < 2)
+            return false;
+
+        bool active = isLeft ? leftAnchorWaveActive : rightAnchorWaveActive;
+        if (!active)
+            return false;
+
+        float duration = Mathf.Max(0.001f, anchorWaveDuration);
+        float startTime = isLeft ? leftAnchorWaveStartTime : rightAnchorWaveStartTime;
+        if (Time.unscaledTime - startTime < duration)
+            return true;
+
+        ResetAnchorWaveState(isLeft);
+        return false;
+    }
+
+    private Vector3[] BuildAnchorWavePath(Vector3[] path, bool isLeft)
+    {
+        int pointCount = Mathf.Max(2, anchorWaveSegments + 1);
+        Vector3[] points = GetAnchorWaveBuffer(isLeft, pointCount);
+        float length = GetPathLength(path);
+
+        if (length < 0.001f)
+        {
+            points[0] = path[0];
+            points[pointCount - 1] = path[path.Length - 1];
+            return points;
+        }
+
+        float duration = Mathf.Max(0.001f, anchorWaveDuration);
+        float startTime = isLeft ? leftAnchorWaveStartTime : rightAnchorWaveStartTime;
+        float progress = Mathf.Clamp01((Time.unscaledTime - startTime) / duration);
+        float decay = 1f - progress;
+        float maxRatioAmplitude = length * Mathf.Clamp01(anchorWaveMaxLengthRatio);
+        float amplitude = Mathf.Min(Mathf.Max(0f, anchorWaveAmplitude), maxRatioAmplitude) * decay;
+        float phase = progress * Mathf.PI * 2f * Mathf.Max(1, anchorWaveOscillations);
+
+        for (int i = 0; i < pointCount; i++)
+        {
+            float t = i / (float)(pointCount - 1);
+            Vector3 basePoint = SamplePath(path, t);
+            Vector3 before = SamplePath(path, Mathf.Clamp01(t - 0.01f));
+            Vector3 after = SamplePath(path, Mathf.Clamp01(t + 0.01f));
+            Vector2 tangent = after - before;
+            Vector2 dir = tangent.sqrMagnitude > 0.000001f ? tangent.normalized : Vector2.right;
+            Vector2 normal = new Vector2(-dir.y, dir.x);
+            float envelope = Mathf.Sin(t * Mathf.PI);
+            Vector2 wavePoint = (Vector2)basePoint + normal * (Mathf.Sin(phase) * envelope * amplitude);
+            Vector3 candidate = new Vector3(wavePoint.x, wavePoint.y, basePoint.z);
+
+            points[i] = ConstrainVisualPoint(basePoint, candidate);
+        }
+
+        points[0] = path[0];
+        points[pointCount - 1] = path[path.Length - 1];
+        ConstrainVisualSegments(points);
+        return points;
+    }
+
     private Vector3[] GetShootWaveBuffer(bool isLeft, int pointCount)
     {
         Vector3[] buffer = isLeft ? leftShootWavePoints : rightShootWavePoints;
@@ -310,6 +430,26 @@ public class OdmVisuals : MonoBehaviour
         else rightShootWavePoints = buffer;
 
         return buffer;
+    }
+
+    private Vector3[] GetAnchorWaveBuffer(bool isLeft, int pointCount)
+    {
+        Vector3[] buffer = isLeft ? leftAnchorWavePoints : rightAnchorWavePoints;
+        if (buffer == null || buffer.Length != pointCount)
+            buffer = new Vector3[pointCount];
+
+        if (isLeft) leftAnchorWavePoints = buffer;
+        else rightAnchorWavePoints = buffer;
+
+        return buffer;
+    }
+
+    private void ResetAnchorWaveState(bool isLeft)
+    {
+        if (isLeft)
+            leftAnchorWaveActive = false;
+        else
+            rightAnchorWaveActive = false;
     }
 
     private Vector3 ConstrainVisualPoint(Vector3 basePoint, Vector3 candidate)

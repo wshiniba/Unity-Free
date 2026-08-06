@@ -19,6 +19,7 @@ public class OdmController : MonoBehaviour
     private const float JumpGroundIgnoreDuration = 0.08f;
     private const float JumpGroundedUpwardSpeedThreshold = 0.1f;
     private const float MoveInputDeadZone = 0.01f;
+    private const float CableSurfaceSkin = 0.01f;
 
     private struct RopeBend
     {
@@ -97,8 +98,20 @@ public class OdmController : MonoBehaviour
     [Tooltip("绳索头发射和收回时的可视移动速度。")]
     public float cableShootSpeed = 50f;
 
-    [Tooltip("连接点向碰撞体表面外侧偏移的距离，避免锚点卡进碰撞体内部。")]
-    public float anchorSurfaceOffset = 0.15f;
+    [Tooltip("按下 Q 时，优先在鼠标位置附近搜索普通可钩点的半径。")]
+    public float mouseAnchorSearchRadius = 1.5f;
+
+    [Tooltip("按下 Q 时，沿飞行绳索路径搜索普通可钩点的半径。")]
+    public float cablePathAnchorSearchRadius = 0.45f;
+
+    [Tooltip("选中玩家时，在 Scene 视图显示普通可钩点辅助搜索范围。")]
+    public bool showAnchorAssistGizmos = true;
+
+    [Tooltip("鼠标附近可钩点搜索范围的 Scene 视图颜色。")]
+    public Color mouseAnchorSearchGizmoColor = new Color(0.2f, 0.8f, 1f, 0.9f);
+
+    [Tooltip("飞行绳索路径可钩点搜索范围的 Scene 视图颜色。")]
+    public Color cablePathAnchorSearchGizmoColor = new Color(1f, 0.85f, 0.15f, 0.9f);
 
     [Header("触手命中")]
     [Tooltip("触手飞行/甩动时可命中的层级。默认检测全部层级，实际只会伤害 Enemy 或 BossController。")]
@@ -447,6 +460,7 @@ public class OdmController : MonoBehaviour
 
     private OdmGasSystem gasSystem;
     private PlayerHealth playerHealth;
+    private OdmCableFeedback cableFeedback;
 
     private float horizontalInput;
     private float lastGroundedTime = float.NegativeInfinity;
@@ -523,6 +537,8 @@ public class OdmController : MonoBehaviour
     private Vector2 rightTipSurfaceNormal;
     private Collider2D leftTipSurfaceCollider;
     private Collider2D rightTipSurfaceCollider;
+    private Vector2 lastAnchorSearchTarget;
+    private bool hasLastAnchorSearchTarget;
 
     private readonly List<RopeBend> leftBends = new List<RopeBend>();
     private readonly List<RopeBend> rightBends = new List<RopeBend>();
@@ -531,6 +547,9 @@ public class OdmController : MonoBehaviour
 
     private readonly RaycastHit2D[] castHits = new RaycastHit2D[8];
     private readonly RaycastHit2D[] tentacleHitResults = new RaycastHit2D[16];
+    private readonly RaycastHit2D[] anchorHitResults = new RaycastHit2D[16];
+    private readonly RaycastHit2D[] anchorBlockResults = new RaycastHit2D[8];
+    private readonly Collider2D[] anchorOverlapResults = new Collider2D[16];
     private readonly Collider2D[] executionResults = new Collider2D[16];
     private readonly Collider2D[] enemyContactResults = new Collider2D[16];
     private ContactFilter2D tentacleHitFilter;
@@ -553,6 +572,8 @@ public class OdmController : MonoBehaviour
         groundMoveSpeed = Mathf.Max(0f, groundMoveSpeed);
         ropeMobilityHorizontalSpeed = Mathf.Max(0f, ropeMobilityHorizontalSpeed);
         maxSpeed = Mathf.Max(0f, maxSpeed);
+        mouseAnchorSearchRadius = Mathf.Max(0f, mouseAnchorSearchRadius);
+        cablePathAnchorSearchRadius = Mathf.Max(0f, cablePathAnchorSearchRadius);
 
         enemyThrowVelocityScale = Mathf.Max(0f, enemyThrowVelocityScale);
         enemyThrowVelocitySmoothing = Mathf.Max(0f, enemyThrowVelocitySmoothing);
@@ -573,6 +594,7 @@ public class OdmController : MonoBehaviour
             bodyColliderOriginalOffset = bodyCollider.offset;
         gasSystem = GetComponent<OdmGasSystem>();
         playerHealth = GetComponent<PlayerHealth>();
+        cableFeedback = GetComponent<OdmCableFeedback>();
         if (playerHealth == null)
             playerHealth = gameObject.AddComponent<PlayerHealth>();
         if (characterRenderer == null) characterRenderer = GetComponent<SpriteRenderer>();
@@ -613,6 +635,8 @@ public class OdmController : MonoBehaviour
 
     private void OnDrawGizmosSelected()
     {
+        DrawAnchorAssistGizmos();
+
         if (!showCableParryAreaGizmo)
             return;
 
@@ -630,6 +654,57 @@ public class OdmController : MonoBehaviour
             ? new Color(1f, 1f, 1f, 0.9f)
             : new Color(0.35f, 0.9f, 1f, 0.65f);
         Gizmos.DrawWireCube(center, size);
+    }
+
+    private void DrawAnchorAssistGizmos()
+    {
+        if (!showAnchorAssistGizmos)
+            return;
+
+        if (mouseAnchorSearchRadius > 0f)
+        {
+            Gizmos.color = mouseAnchorSearchGizmoColor;
+            Vector2 mouseSearchCenter = hasLastAnchorSearchTarget
+                ? lastAnchorSearchTarget
+                : (Vector2)transform.position;
+            Gizmos.DrawWireSphere(mouseSearchCenter, mouseAnchorSearchRadius);
+        }
+
+        if (cablePathAnchorSearchRadius <= 0f)
+            return;
+
+        Gizmos.color = cablePathAnchorSearchGizmoColor;
+        DrawCablePathAnchorSearchGizmo(true);
+        DrawCablePathAnchorSearchGizmo(false);
+    }
+
+    private void DrawCablePathAnchorSearchGizmo(bool isLeft)
+    {
+        if (!(isLeft ? IsLeftFlying : IsRightFlying))
+            return;
+
+        Vector3[] path = GetCablePath(isLeft);
+        if (path == null || path.Length < 2)
+            return;
+
+        float radius = Mathf.Max(0f, cablePathAnchorSearchRadius);
+        for (int i = 1; i < path.Length; i++)
+        {
+            Vector2 from = path[i - 1];
+            Vector2 to = path[i];
+            Vector2 segment = to - from;
+            float distance = segment.magnitude;
+            if (distance < 0.001f)
+                continue;
+
+            Vector2 normal = new Vector2(-segment.y, segment.x).normalized * radius;
+            Gizmos.DrawLine(from + normal, to + normal);
+            Gizmos.DrawLine(from - normal, to - normal);
+            Gizmos.DrawWireSphere(from, radius);
+
+            if (i == path.Length - 1)
+                Gizmos.DrawWireSphere(to, radius);
+        }
     }
 
     void Update()
@@ -1257,6 +1332,7 @@ public class OdmController : MonoBehaviour
         }
 
         currentState = ResolveCurrentState();
+        NotifyCableShot(isLeft);
     }
 
     public void UpdateCableTarget(Vector2 worldTarget, bool isLeft)
@@ -1285,6 +1361,14 @@ public class OdmController : MonoBehaviour
 
     public bool TryAnchorTouchedCable()
     {
+        return TryAnchorTouchedCable(transform.position);
+    }
+
+    public bool TryAnchorTouchedCable(Vector2 targetPosition)
+    {
+        lastAnchorSearchTarget = targetPosition;
+        hasLastAnchorSearchTarget = true;
+
         bool anchored = false;
 
         if (TryAnchorTouchedEnemy(true))
@@ -1299,19 +1383,220 @@ public class OdmController : MonoBehaviour
         if (TryAnchorTouchedObject(false))
             anchored = true;
 
-        if (IsLeftFlying && leftTipTouchingSurface && CanAnchorTouchedSurface(true))
-        {
-            AnchorCable(true, LeftFlyTip);
+        if (TryAnchorSceneCable(true, targetPosition))
             anchored = true;
-        }
 
-        if (IsRightFlying && rightTipTouchingSurface && CanAnchorTouchedSurface(false))
-        {
-            AnchorCable(false, RightFlyTip);
+        if (TryAnchorSceneCable(false, targetPosition))
             anchored = true;
-        }
 
         return anchored;
+    }
+
+    private bool TryAnchorSceneCable(bool isLeft, Vector2 targetPosition)
+    {
+        if (!(isLeft ? IsLeftFlying : IsRightFlying))
+            return false;
+
+        if (TryAnchorSceneCableNearPoint(isLeft, targetPosition))
+            return true;
+
+        if (TryAnchorSceneCableAlongPath(isLeft, targetPosition))
+            return true;
+
+        if (IsTipTouchingSurface(isLeft) && CanAnchorTouchedSurface(isLeft))
+        {
+            AnchorCable(isLeft, isLeft ? LeftFlyTip : RightFlyTip);
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool TryAnchorSceneCableNearPoint(bool isLeft, Vector2 targetPosition)
+    {
+        float searchRadius = Mathf.Max(0f, mouseAnchorSearchRadius);
+        if (searchRadius <= 0f)
+            return false;
+
+        ContactFilter2D filter = CreateLayerFilter(anchorableLayer, true);
+        int hitCount = Physics2D.OverlapCircle(targetPosition, searchRadius, filter, anchorOverlapResults);
+        Collider2D bestCollider = null;
+        Vector2 bestAnchor = Vector2.zero;
+        float bestScore = float.PositiveInfinity;
+        Vector2 startPosition = GetShootPoint(isLeft).position;
+
+        for (int i = 0; i < hitCount; i++)
+        {
+            Collider2D candidate = anchorOverlapResults[i];
+            if (!TryGetSceneAnchorCandidate(isLeft, candidate, targetPosition, out Vector2 anchorPoint))
+                continue;
+
+            float mouseScore = (anchorPoint - targetPosition).sqrMagnitude;
+            float startScore = (anchorPoint - startPosition).sqrMagnitude;
+            float score = mouseScore + startScore * 0.001f;
+            if (score >= bestScore)
+                continue;
+
+            bestScore = score;
+            bestCollider = candidate;
+            bestAnchor = anchorPoint;
+        }
+
+        if (bestCollider == null)
+            return false;
+
+        AnchorCable(isLeft, bestAnchor);
+        return true;
+    }
+
+    private bool TryAnchorSceneCableAlongPath(bool isLeft, Vector2 targetPosition)
+    {
+        float searchRadius = Mathf.Max(0f, cablePathAnchorSearchRadius);
+        if (searchRadius <= 0f)
+            return false;
+
+        Vector3[] path = GetCablePath(isLeft);
+        if (path == null || path.Length < 2)
+            return false;
+
+        ContactFilter2D filter = CreateLayerFilter(anchorableLayer, true);
+        Collider2D bestCollider = null;
+        Vector2 bestAnchor = Vector2.zero;
+        float bestScore = float.PositiveInfinity;
+        float pathTravel = 0f;
+
+        for (int i = 1; i < path.Length; i++)
+        {
+            Vector2 from = path[i - 1];
+            Vector2 to = path[i];
+            Vector2 segment = to - from;
+            float distance = segment.magnitude;
+            if (distance < 0.001f)
+                continue;
+
+            Vector2 direction = segment / distance;
+            int hitCount = Physics2D.CircleCast(
+                from,
+                searchRadius,
+                direction,
+                filter,
+                anchorHitResults,
+                distance);
+
+            for (int hitIndex = 0; hitIndex < hitCount; hitIndex++)
+            {
+                Collider2D candidate = anchorHitResults[hitIndex].collider;
+                Vector2 referencePoint = anchorHitResults[hitIndex].point;
+                if (referencePoint == Vector2.zero && candidate != null)
+                    referencePoint = ClosestPointOnSegment(candidate.bounds.center, from, to);
+
+                if (!TryGetSceneAnchorCandidate(isLeft, candidate, referencePoint, out Vector2 anchorPoint))
+                    continue;
+
+                float pathDistance = Vector2.Distance(anchorPoint, ClosestPointOnSegment(anchorPoint, from, to));
+                float alongSegment = Mathf.Clamp(Vector2.Dot(anchorPoint - from, direction), 0f, distance);
+                float mouseScore = (anchorPoint - targetPosition).sqrMagnitude;
+                float score = mouseScore + pathDistance * pathDistance * 0.25f + (pathTravel + alongSegment) * 0.0001f;
+                if (score >= bestScore)
+                    continue;
+
+                bestScore = score;
+                bestCollider = candidate;
+                bestAnchor = anchorPoint;
+            }
+
+            pathTravel += distance;
+        }
+
+        if (bestCollider == null)
+            return false;
+
+        AnchorCable(isLeft, bestAnchor);
+        return true;
+    }
+
+    private bool TryGetSceneAnchorCandidate(bool isLeft, Collider2D candidate, Vector2 referencePoint, out Vector2 anchorPoint)
+    {
+        anchorPoint = Vector2.zero;
+        if (!IsSceneAnchorCandidate(candidate))
+            return false;
+
+        anchorPoint = GetSceneAnchorPoint(candidate, referencePoint);
+        if (!IsAnchorPointInRange(isLeft, anchorPoint))
+            return false;
+
+        return IsSceneAnchorReachable(isLeft, candidate, anchorPoint);
+    }
+
+    private bool IsSceneAnchorCandidate(Collider2D candidate)
+    {
+        if (candidate == null || candidate == bodyCollider)
+            return false;
+
+        if (candidate.transform.IsChildOf(transform))
+            return false;
+
+        if (!IsLayerInMask(candidate.gameObject.layer, anchorableLayer))
+            return false;
+
+        if (candidate.GetComponentInParent<Enemy>() != null)
+            return false;
+
+        if (candidate.GetComponentInParent<TentacleInteractableObject>() != null)
+            return false;
+
+        return true;
+    }
+
+    private Vector2 GetSceneAnchorPoint(Collider2D candidate, Vector2 referencePoint)
+    {
+        return candidate.bounds.center;
+    }
+
+    private bool IsAnchorPointInRange(bool isLeft, Vector2 anchorPoint)
+    {
+        Vector2 startPosition = GetShootPoint(isLeft).position;
+        float maxLength = Mathf.Max(0.1f, maxCableLength);
+        return (anchorPoint - startPosition).sqrMagnitude <= maxLength * maxLength;
+    }
+
+    private bool IsSceneAnchorReachable(bool isLeft, Collider2D candidate, Vector2 anchorPoint)
+    {
+        Vector2 startPosition = GetShootPoint(isLeft).position;
+        ContactFilter2D filter = CreateLayerFilter(GetSolidMask(), false);
+        int hitCount = Physics2D.Linecast(startPosition, anchorPoint, filter, anchorBlockResults);
+        for (int i = 0; i < hitCount; i++)
+        {
+            Collider2D hitCollider = anchorBlockResults[i].collider;
+            if (hitCollider == null || hitCollider == bodyCollider || hitCollider == candidate)
+                continue;
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private Vector2 ClosestPointOnSegment(Vector2 point, Vector2 from, Vector2 to)
+    {
+        Vector2 segment = to - from;
+        float lengthSquared = segment.sqrMagnitude;
+        if (lengthSquared < 0.000001f)
+            return from;
+
+        float t = Mathf.Clamp01(Vector2.Dot(point - from, segment) / lengthSquared);
+        return from + segment * t;
+    }
+
+    private ContactFilter2D CreateLayerFilter(LayerMask layerMask, bool includeTriggers)
+    {
+        ContactFilter2D filter = new ContactFilter2D
+        {
+            useLayerMask = true,
+            useTriggers = includeTriggers
+        };
+        filter.SetLayerMask(layerMask);
+        return filter;
     }
 
     private bool TryAnchorTouchedEnemy(bool isLeft)
@@ -1698,8 +1983,12 @@ public class OdmController : MonoBehaviour
         if (executionActive)
             return;
 
+        bool hadCable = HasCableForSide(isLeft);
         if (TryThrowGrabbedObject(isLeft) || TryThrowGrabbedEnemy(isLeft))
         {
+            if (hadCable)
+                NotifyCableReleased(isLeft);
+
             if (!HasActiveCable())
                 currentState = ResolveCurrentState();
 
@@ -1719,6 +2008,9 @@ public class OdmController : MonoBehaviour
 
         if (!HasActiveCable())
             currentState = ResolveCurrentState();
+
+        if (hadCable)
+            NotifyCableReleased(isLeft);
     }
 
     public void AirDash(Vector2 direction)
@@ -2313,6 +2605,7 @@ public class OdmController : MonoBehaviour
         }
 
         currentState = ResolveCurrentState();
+        NotifyCableAnchored(isLeft, OdmCableAnchorFeedbackType.Scene);
     }
 
     private void AnchorCableToEnemy(bool isLeft, Transform target, Vector2 localPoint)
@@ -2355,6 +2648,7 @@ public class OdmController : MonoBehaviour
         }
 
         currentState = ResolveCurrentState();
+        NotifyCableAnchored(isLeft, OdmCableAnchorFeedbackType.Enemy);
     }
 
     private void AnchorCableToObject(bool isLeft, Transform target, Vector2 localPoint)
@@ -2397,6 +2691,7 @@ public class OdmController : MonoBehaviour
         }
 
         currentState = ResolveCurrentState();
+        NotifyCableAnchored(isLeft, OdmCableAnchorFeedbackType.Object);
     }
 
     private void UpdateEnemyAnchorPositions()
@@ -3020,7 +3315,7 @@ public class OdmController : MonoBehaviour
         filter.useTriggers = false;
         filter.SetLayerMask(GetSolidMask());
 
-        int count = bodyCollider.Cast(direction / distance, filter, castHits, castSkin + anchorSurfaceOffset);
+        int count = bodyCollider.Cast(direction / distance, filter, castHits, castSkin + CableSurfaceSkin);
         for (int i = 0; i < count; i++)
         {
             if (castHits[i].collider != null && castHits[i].collider != bodyCollider)
@@ -3104,7 +3399,7 @@ public class OdmController : MonoBehaviour
 
     private Vector2 GetSafeAnchorPoint(RaycastHit2D hit)
     {
-        return hit.point + hit.normal * anchorSurfaceOffset;
+        return hit.point + hit.normal * CableSurfaceSkin;
     }
 
     private Transform GetShootPoint(bool isLeft)
@@ -3197,9 +3492,34 @@ public class OdmController : MonoBehaviour
         return IsLeftAnchored || IsRightAnchored || IsLeftFlying || IsRightFlying;
     }
 
+    private bool HasCableForSide(bool isLeft)
+    {
+        return isLeft
+            ? IsLeftAnchored || IsLeftFlying
+            : IsRightAnchored || IsRightFlying;
+    }
+
     private bool HasFlyingCable()
     {
         return IsLeftFlying || IsRightFlying;
+    }
+
+    private void NotifyCableShot(bool isLeft)
+    {
+        if (cableFeedback != null)
+            cableFeedback.PlayShoot(isLeft);
+    }
+
+    private void NotifyCableAnchored(bool isLeft, OdmCableAnchorFeedbackType anchorType)
+    {
+        if (cableFeedback != null)
+            cableFeedback.PlayAnchor(isLeft, anchorType);
+    }
+
+    private void NotifyCableReleased(bool isLeft)
+    {
+        if (cableFeedback != null)
+            cableFeedback.PlayRelease(isLeft);
     }
 
     private bool HasAnchoredCable()
