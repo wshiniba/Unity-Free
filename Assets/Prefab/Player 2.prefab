@@ -1291,7 +1291,7 @@ MonoBehaviour:
   maxCableLength: 20
   cableShootSpeed: 200
   mouseAnchorSearchRadius: 1.5
-  cablePathAnchorSearchRadius: 0.45
+  cablePathAnchorSearchRadius: 2
   showAnchorAssistGizmos: 1
   mouseAnchorSearchGizmoColor: {r: 0.2, g: 0.8, b: 1, a: 0.9}
   cablePathAnchorSearchGizmoColor: {r: 1, g: 0.85, b: 0.15, a: 0.9}
@@ -1429,10 +1429,10 @@ MonoBehaviour:
   shootWaveSecondaryFrequency: 6
   enableAnchorWave: 1
   anchorWaveSegments: 18
-  anchorWaveAmplitude: 1.2
+  anchorWaveAmplitude: 1.5
   anchorWaveMaxLengthRatio: 0.12
-  anchorWaveDuration: 0.24
-  anchorWaveOscillations: 2
+  anchorWaveDuration: 0.2
+  anchorWaveOscillations: 4
   elasticMaxLagDistance: 6.5
   elasticBendVelocityScale: 3.5
   elasticBendSmoothTime: 0.2
@@ -1473,7 +1473,7 @@ MonoBehaviour:
   failVolume: 1
   enableAnchorBulletTime: 1
   anchorBulletTimeScale: 0.2
-  anchorBulletTimeDuration: 0.7
+  anchorBulletTimeDuration: 0.4
   visuals: {fileID: 7814601772176285072}
   enableAnchorWave: 1
 --- !u!95 &590912240735879002
