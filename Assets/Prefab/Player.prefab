@@ -883,9 +883,9 @@ MonoBehaviour:
   anchorVolume: 1
   releaseVolume: 1
   failVolume: 1
-  enableAnchorHitStop: 1
-  anchorHitStopTimeScale: 0.08
-  anchorHitStopDuration: 0.035
+  enableAnchorBulletTime: 1
+  anchorBulletTimeScale: 0.2
+  anchorBulletTimeDuration: 0.12
   visuals: {fileID: 7782937743992870104}
   enableAnchorWave: 1
 --- !u!95 &2484203353302016842

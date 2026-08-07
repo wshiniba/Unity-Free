@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 public enum OdmCableAnchorFeedbackType
 {
@@ -9,7 +10,7 @@ public enum OdmCableAnchorFeedbackType
 }
 
 /// <summary>
-/// 统一管理玩家绳索的音频、顿帧和命中视觉反馈。
+/// 统一管理玩家绳索的音频、钩中子弹时间和命中视觉反馈。
 /// </summary>
 [DisallowMultipleComponent]
 public class OdmCableFeedback : MonoBehaviour
@@ -70,19 +71,22 @@ public class OdmCableFeedback : MonoBehaviour
     [Range(0f, 1f)]
     public float failVolume = 1f;
 
-    [Header("钩中停顿")]
-    [InspectorName("启用钩中停顿")]
-    [Tooltip("开启后，绳索钩中瞬间会短暂降低全局时间倍率，制造卡肉感。")]
-    public bool enableAnchorHitStop = true;
+    [Header("钩中子弹时间")]
+    [InspectorName("启用钩中子弹时间")]
+    [Tooltip("开启后，绳索钩中瞬间会短暂降低全局时间倍率。该参数只影响钩中反馈，不和攻击命中反馈共用。玩家开始拉拽时会提前结束。")]
+    [FormerlySerializedAs("enableAnchorHitStop")]
+    public bool enableAnchorBulletTime = true;
 
-    [InspectorName("钩中停顿时间倍率")]
-    [Tooltip("钩中停顿期间的全局时间倍率。数值越接近 0，停滞越明显。")]
+    [InspectorName("钩中子弹时间倍率")]
+    [Tooltip("钩中子弹时间期间的全局时间倍率。数值越接近 0 越接近冻结，数值越接近 1 越接近正常速度。该值独立于攻击命中顿帧。")]
     [Range(0.001f, 1f)]
-    public float anchorHitStopTimeScale = 0.08f;
+    [FormerlySerializedAs("anchorHitStopTimeScale")]
+    public float anchorBulletTimeScale = 0.2f;
 
-    [InspectorName("钩中停顿持续时间")]
-    [Tooltip("钩中停顿持续时间，使用真实时间，不受 Time.timeScale 影响。")]
-    public float anchorHitStopDuration = 0.035f;
+    [InspectorName("钩中子弹时间持续时间")]
+    [Tooltip("钩中子弹时间最多持续多久，使用真实时间，不受 Time.timeScale 影响。玩家开始拉拽时会提前结束。该值独立于攻击命中顿帧。")]
+    [FormerlySerializedAs("anchorHitStopDuration")]
+    public float anchorBulletTimeDuration = 0.12f;
 
     [Header("视觉反馈")]
     [InspectorName("绳索视觉组件")]
@@ -93,8 +97,8 @@ public class OdmCableFeedback : MonoBehaviour
     [Tooltip("开启后，绳索钩中时会通知 OdmVisuals 播放命中波浪。")]
     public bool enableAnchorWave = true;
 
-    private Coroutine anchorHitStopRoutine;
-    private int anchorHitStopToken;
+    private Coroutine anchorBulletTimeRoutine;
+    private int anchorBulletTimeToken;
 
     private void Awake()
     {
@@ -117,13 +121,13 @@ public class OdmCableFeedback : MonoBehaviour
         anchorVolume = Mathf.Clamp01(anchorVolume);
         releaseVolume = Mathf.Clamp01(releaseVolume);
         failVolume = Mathf.Clamp01(failVolume);
-        anchorHitStopTimeScale = Mathf.Clamp(anchorHitStopTimeScale, 0.001f, 1f);
-        anchorHitStopDuration = Mathf.Max(0f, anchorHitStopDuration);
+        anchorBulletTimeScale = Mathf.Clamp(anchorBulletTimeScale, 0.001f, 1f);
+        anchorBulletTimeDuration = Mathf.Max(0f, anchorBulletTimeDuration);
     }
 
     private void OnDestroy()
     {
-        EndAnchorHitStop();
+        EndAnchorBulletTime();
     }
 
     public void PlayShoot(bool isLeft)
@@ -135,8 +139,8 @@ public class OdmCableFeedback : MonoBehaviour
     {
         PlayOneShot(GetAnchorClip(anchorType), anchorVolume);
 
-        if (enableAnchorHitStop)
-            StartAnchorHitStop();
+        if (enableAnchorBulletTime)
+            StartAnchorBulletTime();
 
         if (enableAnchorWave && visuals != null)
             visuals.PlayAnchorWave(isLeft);
@@ -173,38 +177,38 @@ public class OdmCableFeedback : MonoBehaviour
         audioSource.PlayOneShot(clip, Mathf.Clamp01(masterVolume) * Mathf.Clamp01(volume));
     }
 
-    private void StartAnchorHitStop()
+    private void StartAnchorBulletTime()
     {
-        if (anchorHitStopDuration <= 0f)
+        if (anchorBulletTimeDuration <= 0f)
             return;
 
-        EndAnchorHitStop();
-        anchorHitStopRoutine = StartCoroutine(AnchorHitStopRoutine());
+        EndAnchorBulletTime();
+        anchorBulletTimeRoutine = StartCoroutine(AnchorBulletTimeRoutine());
     }
 
-    private IEnumerator AnchorHitStopRoutine()
+    private IEnumerator AnchorBulletTimeRoutine()
     {
-        anchorHitStopToken = TimeScaleHitStop.Begin(anchorHitStopTimeScale);
+        anchorBulletTimeToken = TimeScaleHitStop.Begin(anchorBulletTimeScale);
 
-        yield return new WaitForSecondsRealtime(anchorHitStopDuration);
+        yield return new WaitForSecondsRealtime(anchorBulletTimeDuration);
 
-        TimeScaleHitStop.End(anchorHitStopToken);
-        anchorHitStopToken = 0;
-        anchorHitStopRoutine = null;
+        TimeScaleHitStop.End(anchorBulletTimeToken);
+        anchorBulletTimeToken = 0;
+        anchorBulletTimeRoutine = null;
     }
 
-    private void EndAnchorHitStop()
+    public void EndAnchorBulletTime()
     {
-        if (anchorHitStopRoutine != null)
+        if (anchorBulletTimeRoutine != null)
         {
-            StopCoroutine(anchorHitStopRoutine);
-            anchorHitStopRoutine = null;
+            StopCoroutine(anchorBulletTimeRoutine);
+            anchorBulletTimeRoutine = null;
         }
 
-        if (anchorHitStopToken != 0)
+        if (anchorBulletTimeToken != 0)
         {
-            TimeScaleHitStop.End(anchorHitStopToken);
-            anchorHitStopToken = 0;
+            TimeScaleHitStop.End(anchorBulletTimeToken);
+            anchorBulletTimeToken = 0;
         }
     }
 }

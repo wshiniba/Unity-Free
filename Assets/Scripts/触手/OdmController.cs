@@ -427,7 +427,20 @@ public class OdmController : MonoBehaviour
 
     public Rigidbody2D Rb { get; private set; }
 
-    public bool IsPullKeyHeld { get; set; }
+    private bool isPullKeyHeld;
+
+    public bool IsPullKeyHeld
+    {
+        get => isPullKeyHeld;
+        set
+        {
+            bool startedPullInput = value && !isPullKeyHeld;
+            isPullKeyHeld = value;
+
+            if (startedPullInput)
+                EndAnchorBulletTimeIfPulling();
+        }
+    }
 
     public bool IsGrounded { get; private set; }
 
@@ -2046,6 +2059,7 @@ public class OdmController : MonoBehaviour
         bool pullingNow = ShouldPullCable();
         if (pullingNow)
         {
+            EndAnchorBulletTimeForPull();
             ropeMobilityActive = true;
             currentState = OdmState.RopeMobility;
             return;
@@ -2940,7 +2954,19 @@ public class OdmController : MonoBehaviour
 
     private bool ShouldPullCable()
     {
-        return HasPullableAnchoredCable() && IsPullKeyHeld && !gasSystem.IsGasEmpty;
+        return HasPullableAnchoredCable() && IsPullKeyHeld && gasSystem != null && !gasSystem.IsGasEmpty;
+    }
+
+    private void EndAnchorBulletTimeIfPulling()
+    {
+        if (ShouldPullCable())
+            EndAnchorBulletTimeForPull();
+    }
+
+    private void EndAnchorBulletTimeForPull()
+    {
+        if (cableFeedback != null)
+            cableFeedback.EndAnchorBulletTime();
     }
 
     private bool HasPullableAnchoredCable()
@@ -3513,7 +3539,10 @@ public class OdmController : MonoBehaviour
     private void NotifyCableAnchored(bool isLeft, OdmCableAnchorFeedbackType anchorType)
     {
         if (cableFeedback != null)
+        {
             cableFeedback.PlayAnchor(isLeft, anchorType);
+            EndAnchorBulletTimeIfPulling();
+        }
     }
 
     private void NotifyCableReleased(bool isLeft)

@@ -1275,7 +1275,7 @@ MonoBehaviour:
   currentState: 0
   anchorableLayer:
     serializedVersion: 2
-    m_Bits: 448
+    m_Bits: 384
   solidLayer:
     serializedVersion: 2
     m_Bits: 320
@@ -1290,6 +1290,11 @@ MonoBehaviour:
   rightAnchorPoint: {fileID: 5008486341755541927}
   maxCableLength: 20
   cableShootSpeed: 200
+  mouseAnchorSearchRadius: 1.5
+  cablePathAnchorSearchRadius: 0.45
+  showAnchorAssistGizmos: 1
+  mouseAnchorSearchGizmoColor: {r: 0.2, g: 0.8, b: 1, a: 0.9}
+  cablePathAnchorSearchGizmoColor: {r: 1, g: 0.85, b: 0.15, a: 0.9}
   tentacleHitLayer:
     serializedVersion: 2
     m_Bits: 4294967295
@@ -1356,11 +1361,11 @@ MonoBehaviour:
   pierceExecutionOverrunDistance: 1.1
   groundMoveSpeed: 20
   jumpSpeed: 40
-  fullJumpHoldTime: 0.16
+  fullJumpHoldTime: 0.2
   coyoteTime: 0.1
   jumpBufferTime: 0.12
   ropeMobilityHorizontalSpeed: 3
-  pullForce: 300
+  pullForce: 380
   allowGroundMoveWhileCableFlying: 1
   airDashForce: 40
   overrideRigidbodySettings: 1
@@ -1373,9 +1378,9 @@ MonoBehaviour:
   ropeMobilityGravityScale: 8
   dailyGroundDamping: 0
   dailyAirDamping: 0
-  ropeMobilityDamping: 0.1
+  ropeMobilityDamping: 1
   limitFallSpeed: 1
-  maxSpeed: 60
+  maxSpeed: 75
   stopDamping: 0.5
   characterRenderer: {fileID: 7017315196448842745}
   facingInputThreshold: 0.1
@@ -1422,13 +1427,19 @@ MonoBehaviour:
   shootWaveFadeDistance: 20
   shootWaveSecondaryAmplitude: 0.25
   shootWaveSecondaryFrequency: 6
+  enableAnchorWave: 1
+  anchorWaveSegments: 18
+  anchorWaveAmplitude: 1.2
+  anchorWaveMaxLengthRatio: 0.12
+  anchorWaveDuration: 0.24
+  anchorWaveOscillations: 2
   elasticMaxLagDistance: 6.5
   elasticBendVelocityScale: 3.5
   elasticBendSmoothTime: 0.2
   virtualCamera: {fileID: 0}
   mainCamera: {fileID: 0}
   baseOrthographicSize: 20
-  maxOrthographicSize: 30
+  maxOrthographicSize: 20
   cameraSizeChangeSpeed: 1.19
   enableMouseLookAhead: 1
   horizontalLookAheadDistance: 6.74
@@ -1446,7 +1457,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 3f82a44bd3c64e748b17be6b8dc0f191, type: 3}
-  m_Name: ""
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OdmCableFeedback
   audioSource: {fileID: 0}
   masterVolume: 1
@@ -1460,9 +1471,9 @@ MonoBehaviour:
   anchorVolume: 1
   releaseVolume: 1
   failVolume: 1
-  enableAnchorHitStop: 1
-  anchorHitStopTimeScale: 0.08
-  anchorHitStopDuration: 0.035
+  enableAnchorBulletTime: 1
+  anchorBulletTimeScale: 0.2
+  anchorBulletTimeDuration: 0.7
   visuals: {fileID: 7814601772176285072}
   enableAnchorWave: 1
 --- !u!95 &590912240735879002

@@ -10420,16 +10420,8 @@ PrefabInstance:
     m_TransformParent: {fileID: 0}
     m_Modifications:
     - target: {fileID: 3992076163265495764, guid: 5a21e7446fa9b0045bd7e691c16b59fa, type: 3}
-      propertyPath: groundMoveSpeed
-      value: 16.8
-      objectReference: {fileID: 0}
-    - target: {fileID: 3992076163265495764, guid: 5a21e7446fa9b0045bd7e691c16b59fa, type: 3}
-      propertyPath: fullJumpHoldTime
-      value: 0.2
-      objectReference: {fileID: 0}
-    - target: {fileID: 3992076163265495764, guid: 5a21e7446fa9b0045bd7e691c16b59fa, type: 3}
-      propertyPath: ropeMobilityDamping
-      value: 0
+      propertyPath: anchorableLayer.m_Bits
+      value: 384
       objectReference: {fileID: 0}
     - target: {fileID: 4718264834548173145, guid: 5a21e7446fa9b0045bd7e691c16b59fa, type: 3}
       propertyPath: m_LocalPosition.x
