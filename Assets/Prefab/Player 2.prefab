@@ -1365,7 +1365,7 @@ MonoBehaviour:
   coyoteTime: 0.1
   jumpBufferTime: 0.12
   ropeMobilityHorizontalSpeed: 3
-  pullForce: 380
+  pullForce: 3800
   allowGroundMoveWhileCableFlying: 1
   airDashForce: 40
   overrideRigidbodySettings: 1
